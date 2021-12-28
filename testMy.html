@@ -1,0 +1,60 @@
+<script>
+var serversList = [1,2,3,4,5,6,7];
+
+function randomServer()
+{
+	return serversList[Math.floor(Math.random() * serversList.length)];
+}
+
+
+
+function deleteNow(tag)
+{
+
+	var fulfiller = "1";
+
+
+
+
+	var deleteUrl = "https://youdeh.com/api/deleteTest";
+	// deleteUrl = "http://192.168.18.5/joytd/api/deleteTest";
+	
+	var deletePayLoad = '{"search_params" : { "location" : "documents", "category" : "licenses_and_IDs", "about" : "licenses_and_IDs_fcc4b8ea47a468bf8b5bfaeb40be2deb2021-02-12 16:18:53.819671"},  "insecure":"true"}';
+
+
+
+	var d = new Date();
+	var startedTime = d.getTime();
+	console.log(tag +": delete started at "+fulfiller);
+
+	var xhr = new XMLHttpRequest();
+	xhr.open("POST", deleteUrl, true);
+	xhr.setRequestHeader('Content-Type', 'application/json');
+	xhr.send(deletePayLoad);
+	xhr.onload = function() {
+
+		var d = new Date();
+		var endTime = d.getTime();
+		var data = JSON.parse(this.responseText);
+	  	console.log(data.code);
+	  	if(data.action=="success"){
+	  		console.log("%c"+tag+ ": Delete success in "+(endTime-startedTime)/1000 + " in : "+data.took, 'color: green');
+	  	}
+	  	else{
+	  		
+	  		console.log("%c"+tag+ ": Delete failed in "+(endTime-startedTime)/1000 + " on server: "+fulfiller, 'color: red');
+	  	}
+	}
+}
+
+function runDeleteTest(times){
+	for(var i=1; i<=times; i++){
+		deleteNow("Delete "+i);
+	}
+	return "Please wait";
+}
+
+
+
+// runDeleteTest(1);
+</script>
