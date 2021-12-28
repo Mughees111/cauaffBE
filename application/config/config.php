@@ -24,7 +24,14 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |
 */
 // $config['base_url'] = 'http://192.168.100.2/creamBE/';
-$config['base_url'] = 'http://192.168.1.110/cauaffBE/';
+$x = false;
+if($x){
+    $config['base_url'] = 'http://192.168.1.110/cauaffBE/';
+}
+else {
+    $config['base_url'] = 'https://cauaff.fictiondevelopers.com/';
+}
+
 // 'https://cream.fictiondevelopers.com/creamBE/';
 
 /*
