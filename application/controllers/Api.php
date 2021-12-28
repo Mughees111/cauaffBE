@@ -394,19 +394,19 @@ class Api extends ADMIN_Controller
             return;
         }
 
-        $about_page = $this->db->where("slug", "about")->get("pages")->result_object()[0];
-        $settings = $this->db->get("settings")->result_object()[0];
+        // $about_page = $this->db->where("slug", "about")->get("pages")->result_object()[0];
+        // $settings = $this->db->get("settings")->result_object()[0];
 
         $user = $user[0];
 
-        $final = array();
-        $all_cats = $this->db->where("is_deleted", 0)->where("status", 1)->order_by("display_priority", "ASC")->limit(20)->get("categories")->result_object();
-        foreach ($all_cats as $one_cat) {
-            $final[] = array(
-                "id" => $one_cat->id,
-                "title" => $one_cat->title,
-            );
-        }
+        // $final = array();
+        // $all_cats = $this->db->where("is_deleted", 0)->where("status", 1)->order_by("display_priority", "ASC")->limit(20)->get("categories")->result_object();
+        // foreach ($all_cats as $one_cat) {
+        //     $final[] = array(
+        //         "id" => $one_cat->id,
+        //         "title" => $one_cat->title,
+        //     );
+        // }
 
         echo json_encode(array(
             "action" => "success",
@@ -414,16 +414,12 @@ class Api extends ADMIN_Controller
                 "id" => $user->id,
                 "name" => $user->name,
                 "username" => $user->username,
-                "step" => $user->steps,
                 "token" => $user->api_logged_sess,
                 "email" => $user->email,
                 "profile_pic" => $user->profile_pic ? $user->profile_pic : "dummy_image.png",
                 "profile_pic_url" => withUrl($user->profile_pic),
                 "phone" => $user->phone ? $user->phone : "",
                 "created_at" => $user->created_at,
-                "currency" => get_currency(),
-                "contact_email" => $settings->email,
-                "all_cats" => $all_cats,
             ),
         )
         );
