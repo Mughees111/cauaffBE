@@ -538,6 +538,7 @@ class Api extends ADMIN_Controller
         $post = json_decode(file_get_contents("php://input"));
         if (empty($post)) {
             $post = (object) $_POST;
+            // test comment
         }
 
         $does_email_exists = $this->db->where('sal_email', $post->sal_email)->count_all_results('salons') > 0 ? true : false;
