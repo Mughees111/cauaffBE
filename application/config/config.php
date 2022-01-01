@@ -24,7 +24,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |
 */
 // $config['base_url'] = 'http://192.168.100.2/creamBE/';
-$x = true;
+$x = false;
 if($x){
     $config['base_url'] = 'http://192.168.1.103/cauaffBE/';
 }
