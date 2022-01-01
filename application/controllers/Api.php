@@ -34,6 +34,7 @@ class Api extends ADMIN_Controller
             "sal_email" => $post->sal_email, // man
             "sal_phone" => $post->sal_phone, // man
             "sal_hours" => serialize($post->sal_hours), // man
+            "sal_type" => $post->sal_type, // man
             "sal_pic" => $post->sal_pic,
             "sal_profile_pic" => $post->sal_profile_pic,
             "sal_password" => md5($post->password),
@@ -136,6 +137,8 @@ class Api extends ADMIN_Controller
             ));
             exit;
         }
+        $make_salon_keyword = $data["sal_name"] . " " . $data["sal_address"] . " " . $data["sal_country"] . " " . $data["sal_city"] . " " . $data["sal_state"];
+        $data["sal_search_words"] = $make_salon_keyword;
 
         $this->db->insert('salons', $data);
         $id = $this->db->insert_id();
@@ -279,6 +282,26 @@ class Api extends ADMIN_Controller
         ));
     }
 
+    private function do_auth($post)
+    {
+        $user =
+        $this->db->where('api_logged_sess', $post->token)
+            ->where('status', 1)
+            ->where('is_deleted', 0)
+            ->get('users')
+            ->result_object();
+
+        if (empty($user) || $post->token == "") {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "Invalid login credentials",
+            ));
+            exit;
+        }
+
+        return $user[0];
+    }
+
     private function do_sure_login($id)
     {
         $user = $this->db->where('id', $id)->get('users')->result_object();
@@ -359,6 +382,7 @@ class Api extends ADMIN_Controller
                 "sal_lat" => $user->sal_lat,
                 "sal_lng" => $user->sal_lng,
                 "sal_state" => $user->sal_state,
+                "sal_type" => $user->sal_type,
 
                 "sal_reviews" => $user->sal_reviews,
                 "sal_rating" => $user->sal_rating,
@@ -545,13 +569,114 @@ class Api extends ADMIN_Controller
                 "error_type" => 1,
             ));
             exit;
-        }
-        else {
+        } else {
             echo json_encode(array(
                 "action" => "success",
             ));
         }
     }
+
+    private function make_salons_b($salons)
+    {
+        $data;
+        $i = 0;
+        foreach ($salons as $salon) {
+            $data[$i] = [
+                "sal_id" => $salon->sal_id,
+                "sal_name" => $salon->sal_name,
+                "sal_contact_person" => $salon->sal_contact_person,
+
+                "sal_address" => $salon->sal_address,
+                "sal_city" => $salon->sal_city,
+                "sal_country" => $salon->sal_country,
+                "sal_zip" => $salon->sal_zip,
+                "sal_lat" => $salon->sal_lat,
+                "sal_lng" => $salon->sal_lng,
+                "sal_state" => $salon->sal_state,
+
+                "sal_reviews" => $salon->sal_reviews,
+                "sal_rating" => $salon->sal_rating,
+                "sal_website" => $salon->sal_website,
+                "sal_search_words" => $salon->sal_search_words,
+                "sal_description" => $salon->sal_description,
+                "sal_type" => $salon->sal_type,
+
+                // "token" => $salon->api_logged_sess,
+                "sal_email" => $salon->sal_email,
+                "sal_pic" => withUrl($salon->sal_pic),
+                "sal_profile_pic" => withUrl($salon->sal_profile_pic),
+                "sal_phone" => $salon->sal_phone ? $salon->sal_phone : "",
+                "sal_created_datetime" => $salon->sal_created_datetime,
+                // "step" => $salon->steps,
+                "sal_hours" => unserialize($salon->sal_hours),
+                "sal_services" => $salon->sal_services,
+            ];
+            $i++;
+        }
+        return $data;
+        // echo json_encode(array(
+        //     "action" => "success",
+        //     "data" => $data,
+        // ));
+    }
+
+    public function get_salons()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user = $this->do_auth($post);
+
+        if ($post->search_keyword) {
+            $salons = $this->db->query("SELECT * FROM salons WHERE sal_search_words LIKE '%".$post->search_keyword."%'")->result_object();
+            $data = $salons;
+
+            $i=0;
+            foreach ($salons as $salon) {
+                $data[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+                $i++;
+            }
+            $data = $this->make_salons_b($data);
+            echo json_encode(array(
+                "action" => "success",
+                "data" => $data,
+            ));
+            
+        } else {
+            $sal_mens = $this->db->query("SELECT * FROM salons WHERE sal_type = 'men' ")->result_object();
+            $sal_mens_final = $sal_mens;
+            $i = 0;
+            foreach ($sal_mens as $sal_men) {
+                $sal_mens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_men->sal_id])->result_object();
+                $i++;
+            }
+            $sal_mens_final = $this->make_salons_b($sal_mens_final);
+
+            $sal_womens = $this->db->query("SELECT * FROM salons WHERE sal_type = 'women' ")->result_object();
+            $sal_womens_final = $sal_womens;
+            $i = 0;
+            foreach ($sal_womens as $sal_women) {
+                $sal_womens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_women->sal_id])->result_object();
+                $i++;
+            }
+            $sal_womens_final = $this->make_salons_b($sal_womens_final);
+            $recommended = array();
+            $final = array(
+                "mens" => $sal_mens_final,
+                "womens" => $sal_womens_final,
+                "recommended" => $recommended,
+            );
+
+            echo json_encode(array(
+                "action" => "success",
+                "data" => $final
+            ));
+        }
+
+    }
+
+    // /////
 
     public function send_otp()
     {
@@ -2095,26 +2220,6 @@ class Api extends ADMIN_Controller
         $settings = $this->db->get("settings")->result_object()[0];
 
         return $settings->currency;
-    }
-
-    private function do_auth($post)
-    {
-        $user =
-        $this->db->where('api_logged_sess', $post->token)
-            ->where('status', 1)
-            ->where('is_deleted', 0)
-            ->get('users')
-            ->result_object();
-
-        if (empty($user) || $post->token == "") {
-            echo json_encode(array(
-                "action" => "failed",
-                "error" => "Invalid login credentials",
-            ));
-            exit;
-        }
-
-        return $user[0];
     }
 
     private function do_auth_salon($post)
