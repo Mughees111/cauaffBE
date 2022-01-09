@@ -101,7 +101,7 @@ else {
 	$db['default'] = array(
 		'dsn'	=> '',
 		'hostname' => 'cauaff.fictiondevelopers.com',
-		'username' => 'fictqcaf_cauaff',
+		'username' => 'cauaff',
 		'password' => 'rFP8xvB!ZLt5Ft7',
 		'database' => 'fictqcaf_cauaff',
 		'dbdriver' => 'mysqli',
