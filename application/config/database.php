@@ -126,7 +126,7 @@ echo '<pre>';
   echo '</pre>';
 
   echo 'Connecting to database: ' .$db['default']['database'];
-  $dbh=mysql_connect
+  $dbh=mysqli_connect
   (
     $db['default']['hostname'],
     $db['default']['username'],
