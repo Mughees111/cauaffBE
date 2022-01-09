@@ -661,7 +661,8 @@ class Api extends ADMIN_Controller
             //     $i++;
             // }
 
-            $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
+            // $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
+            $salons = $this->db->query("SELECT s.*, (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s", [$user->id])->result_object();
             $salon_f = $salons;
             $sal_mens_final;
             $sal_womens_final;
@@ -684,6 +685,7 @@ class Api extends ADMIN_Controller
             $final = array(
                 "mens" => $sal_mens_final,
                 "womens" => $sal_womens_final,
+                "salons" => $salons,
                 "recommended" => $recommended,
             );
 
