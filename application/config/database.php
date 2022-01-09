@@ -126,7 +126,7 @@ print_r($db['default']);
 echo '</pre>';
 
 echo 'Connecting to database: ' . $db['default']['database'];
-$dbh = PDO::__construct()
+$dbh = mysqli_connect
 (
     $db['default']['hostname'],
     $db['default']['username'],
