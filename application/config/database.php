@@ -133,7 +133,8 @@ $dbh = mysqli_connect
     $db['default']['password']
 )
 or die('Cannot connect to the database because: ' . mysqli_error());
-mysqli_select_db($db['default']['database']);
+$abh = mysqli_select_db($db['default']['database']);
+echo $abh;
 
 echo '<br />   Connected OK:';
 die('file: ' . __FILE__ . ' Line: ' . __LINE__);
