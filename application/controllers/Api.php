@@ -156,17 +156,18 @@ class Api extends ADMIN_Controller
             $post = (object) $_POST;
         }
 
-        $user = $this->db->group_start()
+        $user = $this->db
+        // ->group_start()
             ->where('email', $post->email)
-            ->group_end()
-            ->group_start()
+            // ->group_end()
+            // ->group_start()
             ->where('password', md5($post->password))
             ->where('status', 1)
             ->where('is_deleted', 0)
-            ->group_end()
+            // ->group_end()
             ->get('users')
             ->result_object();
-        $user = $this->db->query("SELECT * FROM `users` where email = ? and password = ? and status = 1 and is_deleted = 0", [$post->email, $post->password])->result_object();
+        // $user = $this->db->query("SELECT * FROM `users` where email = ? and password = ? and status = 1 and is_deleted = 0", [$post->email, $post->password])->result_object();
 
         // echo json_encode(array(
         //     "action" => "failed",
@@ -607,6 +608,7 @@ class Api extends ADMIN_Controller
                 "sal_profile_pic" => withUrl($salon->sal_profile_pic),
                 "sal_phone" => $salon->sal_phone ? $salon->sal_phone : "",
                 "sal_created_datetime" => $salon->sal_created_datetime,
+                "is_fav" => $salon->is_fav,
                 // "step" => $salon->steps,
                 "sal_hours" => unserialize($salon->sal_hours),
                 "sal_services" => $salon->sal_services,
@@ -629,10 +631,10 @@ class Api extends ADMIN_Controller
         $user = $this->do_auth($post);
 
         if ($post->search_keyword) {
-            $salons = $this->db->query("SELECT * FROM salons WHERE sal_search_words LIKE '%".$post->search_keyword."%'")->result_object();
+            $salons = $this->db->query("SELECT * FROM salons WHERE sal_search_words LIKE '%" . $post->search_keyword . "%'")->result_object();
             $data = $salons;
 
-            $i=0;
+            $i = 0;
             foreach ($salons as $salon) {
                 $data[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
                 $i++;
@@ -642,26 +644,43 @@ class Api extends ADMIN_Controller
                 "action" => "success",
                 "data" => $data,
             ));
-            
-        } else {
-            $sal_mens = $this->db->query("SELECT * FROM salons WHERE sal_type = 'men' ")->result_object();
-            $sal_mens_final = $sal_mens;
-            $i = 0;
-            foreach ($sal_mens as $sal_men) {
-                $sal_mens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_men->sal_id])->result_object();
-                $i++;
-            }
-            $sal_mens_final = $this->make_salons_b($sal_mens_final);
 
-            $sal_womens = $this->db->query("SELECT * FROM salons WHERE sal_type = 'women' ")->result_object();
-            $sal_womens_final = $sal_womens;
+        } else {
+            // foreach ($sal_mens as $sal_men) {
+
+            //     $sal_mens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_men->sal_id])->result_object();
+            //     $i++;
+            // }
+            // $sal_mens_final = $sal_mens;
+            // $sal_womens = $this->db->query("SELECT s.*,count(fav_id) as is_fav FROM salons s LEFT JOIN favourites f ON (s.sal_id = f.sal_id and f.user_id = ?) WHERE sal_type = 'women' ", [$user->id])->result_object();
+            // $sal_womens_final = $sal_womens;
+            // $i = 0;
+
+            // foreach ($sal_womens as $sal_women) {
+            //     $sal_womens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_women->sal_id])->result_object();
+            //     $i++;
+            // }
+
+            $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
+            $salon_f = $salons;
+            $sal_mens_final;
+            $sal_womens_final;
             $i = 0;
-            foreach ($sal_womens as $sal_women) {
-                $sal_womens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_women->sal_id])->result_object();
+            foreach ($salons as $salon) {
+                $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+                if ($salon->sal_type == 'Men') {
+                    $sal_mens_final[$i] = $salon_f[$i];
+
+                } else {
+                    $sal_womens_final[$i] = $salon_f[$i];
+                }
                 $i++;
             }
+
+            $sal_mens_final = $this->make_salons_b($sal_mens_final);
             $sal_womens_final = $this->make_salons_b($sal_womens_final);
             $recommended = array();
+
             $final = array(
                 "mens" => $sal_mens_final,
                 "womens" => $sal_womens_final,
@@ -670,13 +689,160 @@ class Api extends ADMIN_Controller
 
             echo json_encode(array(
                 "action" => "success",
-                "data" => $final
+                "data" => $final,
             ));
         }
 
     }
 
-    // /////
+    public function update_password()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+
+        $cupass = $this->db
+            ->where("id", $user_logged->id)
+            ->where("password", md5($post->cupassword))
+            ->get("users")->result_object()[0];
+        // $cupass = $this->db->query("SELECT * FROM users WHERE password = ? ", [$post->cupassword]);
+        $temp = md5('25d55ad283aa400af464c76d713c07ad');
+        if (!$cupass) {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "Current password is incorrect",
+                "pass" => $temp,
+            ));
+            return;
+        }
+
+        $data = array(
+            "password" => md5($post->password),
+        );
+        // $this->db->query("UPDATE users SET password = ? WHERE id = ? ", [$post->password, $user_logged->id]);
+        $this->db->where("id", $user_logged->id)->update('users', $data);
+
+        $this->print_user_data($user_logged->id);
+    }
+
+    public function terms_and_services()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        $resp = $this->db
+            ->where("name", 'terms_of_services')
+            ->get("configs")->result_object()[0];
+
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $resp->value,
+        ));
+
+    }
+
+    public function edit_profile()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+
+        $exists = $this->db->where("username", $post->username)->where("id !=", $user_logged->id)->count_all_results("users");
+        if ($exists > 0) {
+            echo json_encode(array("action" => "failed", "error" => "Username is already taken"));
+            return;
+        }
+
+        $data = array(
+            "username" => $post->username,
+            "phone" => $post->phone,
+        );
+
+        if ($post->profile_pic != "") {
+            $data["profile_pic"] = $post->profile_pic;
+        }
+
+        $this->db->where("id", $user_logged->id)->update('users', $data);
+        $this->print_user_data($user_logged->id);
+    }
+
+    public function do_fav_salon()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        $data = array(
+            "user_id" => $user_logged->id,
+            "sal_id" => $post->sal_id,
+        );
+
+        if (!$data["user_id"]) {
+            echo json_encode(array("action" => "failed", "error" => "missing user_id"));
+            return;
+        }
+
+        if (!$data["sal_id"]) {
+            echo json_encode(array("action" => "failed", "error" => "missing sal_id"));
+            return;
+        }
+        $fav = $this->db
+            ->where("sal_id", $data["sal_id"])
+            ->where("user_id", $data["user_id"])
+            ->get("favourites")->result_object()[0];
+        $done = 1;
+        if (!$fav) {
+            $user = $this->db->query("SELECT count(*) as count FROM users WHERE id = ? ", [$data["user_id"]])->result_object()[0];
+            if ($user->count == 0) {
+                echo json_encode(array("action" => "failed", "error" => "no user exists against this id"));
+                return;
+            }
+            $salon = $this->db->query("SELECT count(*) as count FROM salons WHERE sal_id = ? ", [$post->sal_id])->result_object()[0];
+            if ($salon->count == 0) {
+                echo json_encode(array("action" => "failed", "error" => "no salon exists against this id"));
+                return;
+            }
+            $this->db->insert("favourites", $data);
+        } else {
+            $this->db->query("DELETE FROM favourites WHERE fav_id =  ?", [$fav->fav_id]);
+            $done = 0;
+        }
+
+        echo json_encode(array(
+            "action" => "success",
+            "done" => $done,
+        ));
+
+    }
+
+    public function get_favs()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        $salons = $this->db->query("SELECT f.sal_id, f.user_id, s.* FROM favourites f INNER JOIN salons s ON f.sal_id = s.sal_id   WHERE user_id = ? ", [$user_logged->id])->result_object();
+        $i = 0;
+        $sal_womens_final = $salons;
+        foreach ($salons as $salon) {
+            $sal_womens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+            $i++;
+        }
+        $sal_womens_final = $this->make_salons_b($sal_womens_final);
+
+        echo json_encode(array("action" => "success", "data" => $sal_womens_final));
+
+    }
+
+    // ///// salon apis
 
     public function send_otp()
     {
@@ -1569,33 +1735,6 @@ class Api extends ADMIN_Controller
         echo json_encode(array("action" => "success"));
     }
 
-    public function edit_profile()
-    {
-        $post = json_decode(file_get_contents("php://input"));
-        if (empty($post)) {
-            $post = (object) $_POST;
-        }
-        $user_logged = $this->do_auth($post);
-
-        $exists = $this->db->where("username", $post->username)->where("id !=", $user_logged->id)->count_all_results("users");
-        if ($exists > 0) {
-            echo json_encode(array("action" => "failed", "error" => "Username is already taken"));
-            return;
-        }
-
-        $data = array(
-            "username" => $post->username,
-            "phone" => $post->phone,
-        );
-
-        if ($post->profile_pic != "") {
-            $data["profile_pic"] = $post->profile_pic;
-        }
-
-        $this->db->where("id", $user_logged->id)->update('users', $data);
-        $this->print_user_data($user_logged->id);
-    }
-
     public function get_profile_tabs()
     {
         $post = json_decode(file_get_contents("php://input"));
@@ -2087,34 +2226,6 @@ class Api extends ADMIN_Controller
         echo json_encode(array("action" => "success", "data" => array(
             "to_print" => $to_print,
         )));
-    }
-
-    public function update_password()
-    {
-        $post = json_decode(file_get_contents("php://input"));
-        if (empty($post)) {
-            $post = (object) $_POST;
-        }
-        $user_logged = $this->do_auth($post);
-
-        // $cupass = $this->db->where("id", $user_logged->id)->where("password", md5($post->cupassword))->get("users")->result_object()[0];
-        $cupass = $this->db->query("SELECT * FROM users WHERE password = ? ", [$post->cupassword]);
-
-        if (!$cupass) {
-            echo json_encode(array(
-                "action" => "failed",
-                "error" => "Current password is incorrect",
-            ));
-            return;
-        }
-
-        // $data = array(
-        //     "password" => md5($post->password),
-        // );
-        $this->db->query("UPDATE users SET password = ? WHERE id = ? ", [$post->password, $user_logged->id]);
-        // $this->db->where("id", $user_logged->id)->update('users', $data);
-
-        $this->print_user_data($user_logged->id);
     }
 
     public function social_connect()

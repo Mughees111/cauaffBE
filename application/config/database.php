@@ -72,7 +72,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 */
 $active_group = 'default';
 $query_builder = TRUE;
-$x = false;
+$x = true;
 if($x){
 	$db['default'] = array(
 		'dsn'	=> '',
@@ -100,7 +100,7 @@ if($x){
 else {
 	$db['default'] = array(
 		'dsn'	=> '',
-		'hostname' => 'localhost',
+		'hostname' => 'cauaff.fictiondevelopers.com',
 		'username' => 'fictqcaf_cauaff',
 		'password' => 'rFP8xvB!ZLt5Ft7',
 		'database' => 'fictqcaf_cauaff',
