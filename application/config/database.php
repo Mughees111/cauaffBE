@@ -107,7 +107,7 @@ else {
 		'dbdriver' => 'mysqli',
 		'dbprefix' => '',
 		'pconnect' => FALSE,
-		'db_debug' => false,
+		'db_debug' => FALSE,
 		// (ENVIRONMENT !== 'production'),
 		'cache_on' => FALSE,
 		'cachedir' => '',
