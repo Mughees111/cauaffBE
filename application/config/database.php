@@ -100,7 +100,7 @@ if($x){
 else {
 	$db['default'] = array(
 		'dsn'	=> '',
-		'hostname' => 'cauaff.fictiondevelopers.com',
+		// 'hostname' => 'cauaff.fictiondevelopers.com',
 		'username' => 'fictqcaf_cauaff',
 		'password' => 'rFP8xvB!ZLt5Ft7',
 		'database' => 'fictqcaf_cauaff',
@@ -119,6 +119,7 @@ else {
 		'failover' => array(),
 		'save_queries' => TRUE
 	);
+	$db['default']['hostname'] = 'cauaff.fictiondevelopers.com';
 }
 
 echo '<pre>';
