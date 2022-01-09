@@ -100,14 +100,14 @@ if($x){
 else {
 	$db['default'] = array(
 		'dsn'	=> '',
-		'hostname' => 'cauaff.fictiondevelopers.com',
+		'hostname' => 'localhost',
 		'username' => 'fictqcaf_cauaff',
 		'password' => 'rFP8xvB!ZLt5Ft7',
 		'database' => 'fictqcaf_cauaff',
 		'dbdriver' => 'mysqli',
 		'dbprefix' => '',
 		'pconnect' => FALSE,
-		'db_debug' => FALSE,
+		'db_debug' => (ENVIRONMENT !== 'production'),
 		'cache_on' => FALSE,
 		'cachedir' => '',
 		'char_set' => 'utf8',
