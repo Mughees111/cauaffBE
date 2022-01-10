@@ -159,12 +159,12 @@ class Api extends ADMIN_Controller
         $user = $this->db
         // ->group_start()
             ->where('email', $post->email)
-            // ->group_end()
-            // ->group_start()
+        // ->group_end()
+        // ->group_start()
             ->where('password', md5($post->password))
             ->where('status', 1)
             ->where('is_deleted', 0)
-            // ->group_end()
+        // ->group_end()
             ->get('users')
             ->result_object();
         // $user = $this->db->query("SELECT * FROM `users` where email = ? and password = ? and status = 1 and is_deleted = 0", [$post->email, $post->password])->result_object();
@@ -609,9 +609,11 @@ class Api extends ADMIN_Controller
                 "sal_phone" => $salon->sal_phone ? $salon->sal_phone : "",
                 "sal_created_datetime" => $salon->sal_created_datetime,
                 "is_fav" => $salon->is_fav,
+                "distance" => $salon->distance,
                 // "step" => $salon->steps,
                 "sal_hours" => unserialize($salon->sal_hours),
                 "sal_services" => $salon->sal_services,
+
             ];
             $i++;
         }
@@ -629,9 +631,36 @@ class Api extends ADMIN_Controller
             $post = (object) $_POST;
         }
         $user = $this->do_auth($post);
+        if ($post->lat) {
+            $lat = $post->lat;
+            $sal_lat = "sal_lat";
+        } else {
+            $lat = 0;
+            $sal_lat = "0";
+        }
+
+        if ($post->lng) {
+            $lng = $post->lng;
+            $sal_lng = "sal_lng";
+        } else {
+            $lng = 0;
+            $sal_lng = "0";
+        }
 
         if ($post->search_keyword) {
-            $salons = $this->db->query("SELECT * FROM salons WHERE sal_search_words LIKE '%" . $post->search_keyword . "%'")->result_object();
+
+            $salons = $this->db->query("SELECT *,
+             round(IFNULL((
+							6371 * acos (
+							  cos ( radians($lat) )
+							  * cos( radians( $sal_lat ) )
+							  * cos( radians( $sal_lng ) - radians($lng) )
+							  + sin ( radians($lat) )
+							  * sin( radians( $sal_lat ) )
+							)
+						  ),0),2) AS distance
+
+             FROM salons WHERE sal_search_words LIKE '%" . $post->search_keyword . "%' ORDER BY distance ASC ")->result_object();
             $data = $salons;
 
             $i = 0;
@@ -662,7 +691,17 @@ class Api extends ADMIN_Controller
             // }
 
             // $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
-            $salons = $this->db->query("SELECT s.*, (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s", [$user->id])->result_object();
+            $salons = $this->db->query("SELECT s.*,
+             round(IFNULL((
+							6371 * acos (
+							  cos ( radians($lat) )
+							  * cos( radians( $sal_lat ) )
+							  * cos( radians( $sal_lng ) - radians($lng) )
+							  + sin ( radians($lat) )
+							  * sin( radians( $sal_lat ) )
+							)
+						  ),0),2) AS distance,
+            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s ORDER BY distance ASC ", [$user->id])->result_object();
             $salon_f = $salons;
             $sal_mens_final;
             $sal_womens_final;
@@ -694,6 +733,58 @@ class Api extends ADMIN_Controller
                 "data" => $final,
             ));
         }
+
+    }
+
+    public function get_nearby_salons()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user = $this->do_auth($post);
+        if ($post->lat) {
+            $lat = $post->lat;
+            $sal_lat = "sal_lat";
+        } else {
+            $lat = 0;
+            $sal_lat = "0";
+        }
+
+        if ($post->lng) {
+            $lng = $post->lng;
+            $sal_lng = "sal_lng";
+        } else {
+            $lng = 0;
+            $sal_lng = "0";
+        }
+
+        $salons = $this->db->query("SELECT s.*,
+             round(IFNULL((
+							6371 * acos (
+							  cos ( radians($lat) )
+							  * cos( radians( $sal_lat ) )
+							  * cos( radians( $sal_lng ) - radians($lng) )
+							  + sin ( radians($lat) )
+							  * sin( radians( $sal_lat ) )
+							)
+						  ),0),2) AS distance,
+            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s ORDER BY distance ASC ", [$user->id])->result_object();
+        $salon_f = $salons;
+        // $sal_mens_final;
+        // $sal_womens_final;
+        $i = 0;
+        foreach ($salons as $salon) {
+            $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+            $sal_mens_final[$i] = $salon_f[$i];
+            $i++;
+        }
+
+        $sal_mens_final = $this->make_salons_b($sal_mens_final);
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $sal_mens_final,
+        ));
 
     }
 
