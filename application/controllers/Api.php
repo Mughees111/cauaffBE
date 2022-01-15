@@ -935,6 +935,272 @@ class Api extends ADMIN_Controller
 
     }
 
+    private function time_to_slot($time, $time_flg = 1, $slot_duration = 30)
+    {
+        if ($time == "00:00" || $time == "" || $time == "0") {
+            return "0";
+        }
+        $time = explode(":", $time);
+        $hr = $time[0];
+        $min = $time[1];
+        $slot = $hr * (60 / $slot_duration);
+        $slot += $time_flg;
+        $slot += (int) ($min / $slot_duration);
+        return $slot;
+    }
+
+    private function generate_time_slots($sal_id, $date, $hours)
+    {
+        if (isset($sal_id) && isset($date)) {
+            $count = 0;
+            // check if slots already generated;
+            $day = date("N", strtotime($date));
+            $sal_start_slot = $this->time_to_slot($hours[0]);
+            $sal_end_slot = $this->time_to_slot($hours[1]);
+            $qry = "INSERT into salon_slots (sal_id, ss_number, ss_date, ss_start_time, ss_end_time, ss_duration, ss_is_booked )
+					SELECT $sal_id, s_id, '" . date("Y-m-d", strtotime($date)) . "', start_time, end_time, (TIME_TO_SEC(end_time)/60 - TIME_TO_SEC(start_time)/60), '0' FROM time_slots WHERE s_id BETWEEN $sal_start_slot and $sal_end_slot";
+            $resp = $this->db->query($qry);
+            return $qry;
+        }
+    }
+
+    public function get_salon_slots()
+    {
+
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+
+        if (!$post->service_time) {
+            echo json_encode(array("action" => "failed", "error" => "service time is mandatory"));
+            return;
+        }
+
+        if (!$post->sal_id) {
+            echo json_encode(array("action" => "failed", "error" => "sal_id is mandatory"));
+            return;
+        }
+
+        $date = $post->date;
+        if (!$post->date) {
+            $date = date("Y-m-d");
+        }
+
+        $sal_id = $post->sal_id;
+        $device_datetime_sql = $post->device_datetime;
+        $duration = $post->service_time;
+        if ($post->appoint_id) {
+            $appoint_id = $post->appoint_id;
+        } else {
+            $appoint_id = -1;
+        }
+
+        $timestamp = strtotime($date);
+        $day = date('w', $timestamp); // get to number of the day (0 to 6
+        if ($day == 0) {
+            $day = 7;
+        }
+
+        $get_hours = $this->db->query("SELECT sal_hours FROM salons WHERE sal_id = ? ", [$sal_id])->result_object();
+        $get_hours = unserialize($get_hours[0]->sal_hours);
+        // check if slots already generated;
+
+        $is_slots_saved = $this->db->query("SELECT count(*) as counts FROM  salon_slots WHERE sal_id = ? AND ss_date = ? ", [$sal_id, $date])->result_object();
+        if ($is_slots_saved[0]->counts == 0) {
+            // generate time slots
+            $qryy = $this->generate_time_slots($post->sal_id, $date, $get_hours[$day - 1]);
+        }
+        $salon_slots = $this->db->query("SELECT * FROM  salon_slots WHERE sal_id = ? AND ss_date = ? ", [$sal_id, $date])->result_object();
+        $sal_appointment_interval = 15;
+
+        // echo("sal_appointment_interval: " . $sal_appointment_interval);
+        $qry_ss_slots = "SELECT ss_number, ss_start_time,ss_end_time, ss_duration, ss_date, appoint_id
+                         FROM salon_slots
+                       WHERE sal_id = '$sal_id' and ss_date = '" . date("Y-m-d", strtotime($date)) . "'AND concat(ss_date, ' ', ss_start_time) > '$device_datetime_sql'
+                             AND (ss_is_booked = 0 || appoint_id = '$appoint_id')
+                        ORDER BY ss_number DESC";
+        $rs_ss_slots = $this->db->query($qry_ss_slots, [])->result_object();
+
+        // logmsg("first:" . $qry_ts_slots);
+
+        $i = 0;
+        // foreach($s_ss_slots)
+        $arr_ss_slots = array();
+
+        foreach ($rs_ss_slots as $row) {
+            if ($last_ss_number == "") {
+                $last_ss_number = $row->ss_number;
+                $last_duration = 0;
+                $row->duration_ahead = $row->ss_duration;
+            } elseif (($last_ss_number - $row->ss_number) > 1) {
+                $last_duration = 0;
+                $row->duration_ahead = $row->ss_duration;
+            } else {
+                $row->duration_ahead = $last_duration + $row->ss_duration;
+            }
+            $row->duration_ahead = $last_duration + $row->ss_duration;
+            if ($row->duration_ahead >= $duration) {
+                $arr_ss_slots[] = $row;
+            }
+            $last_ss_number = $row->ss_number;
+            $last_duration += $row->ss_duration;
+            $i++;
+
+        }
+        $arr_ss_slots = array_reverse($arr_ss_slots);
+        echo json_encode(array("action" => "success", "data" => $arr_ss_slots));
+        return;
+
+    }
+
+    public function book_appoint()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+
+        if ($post->app_est_duration == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment duration is mandatory"));
+            return;
+        }
+        if ($post->app_start_time == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment start time is mandatory"));
+            return;
+        }
+        // app_est_duration, app_start_time
+        $no_of_slots = ceil($post->app_est_duration / 30);
+        $app_first_slot = $this->time_to_slot($post->app_start_time);
+        $app_slots = $app_first_slot;
+        for ($i = 1; $i < $no_of_slots; $i++) {
+            $app_slots .= "," . ($app_slots + $i);
+        }
+        // $app_end_time = date("H:i", strtotime('+'.$post->app_est_duration. ' minutes', $post->app_start_time));
+        $app_end_time = date('H:i', strtotime($post->app_start_time . ' +' . $post->app_est_duration . ' minutes'));
+
+        $data = array(
+            "user_id" => $user_logged->id,
+            "user_gender" => $post->user_gender,
+            "app_services" => $post->app_services,
+            "app_price" => $post->app_price,
+            "app_est_duration" => $post->app_est_duration,
+            "app_start_time" => $post->app_start_time,
+            "app_date" => $post->app_date,
+            "app_end_time" => $app_end_time,
+            "app_slots" => $app_slots,
+            "app_status" => $post->app_status,
+            "sal_id" => $post->sal_id,
+            "app_rating" => $post->app_rating,
+            "app_review" => $post->app_review,
+            "app_review_datetime" => $post->app_review_datetime,
+            "app_user_info" => $post->app_user_info,
+        );
+        if ($data["app_date"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment date is mandatory"));
+            return;
+        }
+        if ($data["app_services"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment services are mandatory"));
+            return;
+        }
+        if ($data["user_gender"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "user gender is mandatory"));
+            return;
+        }
+        if ($data["app_price"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment services is mandatory"));
+            return;
+        }
+
+        if ($data["app_slots"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment slots are mandatory"));
+            return;
+        }
+        if ($data["app_status"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment status is mandatory"));
+            return;
+        }
+        if ($data["sal_id"] == "") {
+            echo json_encode(array("action" => "failed", "error" => "salon id is mandatory"));
+            return;
+        }
+        $id = $this->db->insert("appointments", $data);
+
+        if ($id) {
+            $appoint_id = $this->db->insert_id();
+            $qry = "UPDATE salon_slots SET ss_is_booked = '1' , appoint_id = " . $appoint_id . " WHERE sal_id = " . $data["sal_id"] . " AND ss_number IN (" . $app_slots . ")";
+            $this->db->query($qry);
+        }
+        echo json_encode(array(
+            "action" => "success",
+            "msg" => "Your appointment has been booked successfully",
+        ));
+
+    }
+
+    public function get_appoints()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        if ($post->lat) {
+            $lat = $post->lat;
+            $sal_lat = "sal_lat";
+        } else {
+            $lat = 0;
+            $sal_lat = "0";
+        }
+
+        if ($post->lng) {
+            $lng = $post->lng;
+            $sal_lng = "sal_lng";
+        } else {
+            $lng = 0;
+            $sal_lng = "0";
+        }
+        $scheduled = array();
+        $data = $this->db->query(
+            "SELECT a.*,s.sal_id, s.sal_name, s.sal_address,s.sal_country,s.sal_city,s.sal_reviews, s.sal_zip,s.sal_contact_person,s.sal_email,s.sal_phone, s.sal_pic, s.sal_profile_pic,s.sal_lat,s.sal_lng,s.sal_type,s.sal_description,s.sal_state,
+            round(IFNULL((
+							6371 * acos (
+							  cos ( radians($lat) )
+							  * cos( radians( $sal_lat ) )
+							  * cos( radians( $sal_lng ) - radians($lng) )
+							  + sin ( radians($lat) )
+							  * sin( radians( $sal_lat ) )
+							)
+						  ),0),2) AS distance
+         FROM appointments a  INNER JOIN salons s ON s.sal_id = a.sal_id WHERE user_id = ?", [$user_logged->id])->result_object();
+$i = 0;
+        foreach ($data as $data1) {
+            if($data1->app_status==strtolower('pending')){
+                $pendings[$i] = $data1;
+            }
+            else if($data1->app_status==strtolower('scheduled')){
+                $scheduled[$i] = $data1;
+            }
+            if($data1->app_status== strtolower('done')){
+                $history[$i] = $data1;
+            }
+        }
+
+        // $history = array_filter($data, function ($row) {
+        //     return $row['app_status'] != strtolower('pending');
+        // });
+
+        echo json_encode(array(
+            "action" => "success",
+            "history" => $history,
+            "pendings" => $pendings,
+            "scheduled" => $scheduled,
+        ));
+
+    }
     // ///// salon apis
 
     public function send_otp()
@@ -2813,3 +3079,20 @@ class Api extends ADMIN_Controller
 //     // "phone" : "03134081068",
 //     // "address" : "Lahore"
 // }
+
+// $date = "('00:00',";
+//         $time = "00:00";
+//         for($i=0;$i<47;$i++){
+//             if($i%2==0){
+//                 $time = date('H:i', strtotime($time . ' +30 minutes'));
+//                 if($i==46){
+//                     $date = $date."'".$time."')";
+//                 }
+//                 else $date = $date."'".$time."'),";
+//             }
+//             else{
+//                 $time = date('H:i', strtotime($time . ' +0 minutes'));
+//                 $date = $date."('".$time."',";
+//             }
+//         }
+//         $qry = "INSERT INTO time_slots (start_time, end_time ) " .$date;
