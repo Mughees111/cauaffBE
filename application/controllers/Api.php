@@ -1013,10 +1013,10 @@ class Api extends ADMIN_Controller
             $qryy = $this->generate_time_slots($post->sal_id, $date, $get_hours[$day - 1]);
         }
         $salon_slots = $this->db->query("SELECT * FROM  salon_slots WHERE sal_id = ? AND ss_date = ? ", [$sal_id, $date])->result_object();
-        $sal_appointment_interval = 15;
+        $sal_appointment_interval = 30;
 
         // echo("sal_appointment_interval: " . $sal_appointment_interval);
-        $qry_ss_slots = "SELECT ss_number, ss_start_time,ss_end_time, ss_duration, ss_date, appoint_id
+        $qry_ss_slots = "SELECT ss_number, ss_start_time,ss_end_time, ss_duration, ss_date, appoint_id,ss_is_booked
                          FROM salon_slots
                        WHERE sal_id = '$sal_id' and ss_date = '" . date("Y-m-d", strtotime($date)) . "'AND concat(ss_date, ' ', ss_start_time) > '$device_datetime_sql'
                              AND (ss_is_booked = 0 || appoint_id = '$appoint_id')
@@ -1050,7 +1050,11 @@ class Api extends ADMIN_Controller
 
         }
         $arr_ss_slots = array_reverse($arr_ss_slots);
-        echo json_encode(array("action" => "success", "data" => $arr_ss_slots));
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $arr_ss_slots,
+            "qry" => $qry_ss_slots,
+        ));
         return;
 
     }
@@ -1127,16 +1131,40 @@ class Api extends ADMIN_Controller
             echo json_encode(array("action" => "failed", "error" => "salon id is mandatory"));
             return;
         }
-        $id = $this->db->insert("appointments", $data);
 
-        if ($id) {
+        $called = '';
+        if ($post->app_id) {
+            $this->db
+                ->where('app_id', $post->app_id)
+                ->update('appointments', $data);
+
+            $called .= "update appointments";
+        } else {
+            $id = $this->db->insert("appointments", $data);
             $appoint_id = $this->db->insert_id();
-            $qry = "UPDATE salon_slots SET ss_is_booked = '1' , appoint_id = " . $appoint_id . " WHERE sal_id = " . $data["sal_id"] . " AND ss_number IN (" . $app_slots . ")";
-            $this->db->query($qry);
+            $called .= "insert appointments";
         }
+
+        if ($appoint_id) {
+            $id = $appoint_id;
+            $called .= "  get insert id " . $appoint_id;
+        } else {
+            $id = $post->app_id;
+            $called .= "  set insert id " . $post->app_id;
+        }
+
+        if ($post->app_id) {
+            $this->db->query("UPDATE salon_slots SET appoint_id = 0, ss_is_booked = 0 WHERE appoint_id = ? ", [$post->app_id]);
+            $called .= " updated salon_slots";
+        }
+
+        $qry = "UPDATE salon_slots SET ss_is_booked = '1' , appoint_id = " . $id . " WHERE sal_id = " . $data["sal_id"] . " AND ss_number IN (" . $app_slots . ")";
+        $this->db->query($qry);
         echo json_encode(array(
             "action" => "success",
             "msg" => "Your appointment has been booked successfully",
+            "qry" => $qry,
+            "called" => $called,
         ));
 
     }
@@ -1175,18 +1203,27 @@ class Api extends ADMIN_Controller
 							  * sin( radians( $sal_lat ) )
 							)
 						  ),0),2) AS distance
-         FROM appointments a  INNER JOIN salons s ON s.sal_id = a.sal_id WHERE user_id = ?", [$user_logged->id])->result_object();
-$i = 0;
+         FROM appointments a  INNER JOIN salons s ON s.sal_id = a.sal_id  WHERE user_id = ?", [$user_logged->id])->result_object();
+        $i = $j = $k = 0;
+
+        $salon_f = $data;
+
         foreach ($data as $data1) {
-            if($data1->app_status==strtolower('pending')){
+            if ($data1->app_status == strtolower('pending')) {
                 $pendings[$i] = $data1;
+                $pendings[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $i++;
+            } else if ($data1->app_status == strtolower('scheduled')) {
+                $scheduled[$j] = $data1;
+                $scheduled[$j]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $j++;
             }
-            else if($data1->app_status==strtolower('scheduled')){
-                $scheduled[$i] = $data1;
+            if ($data1->app_status != strtolower('pending') && $data1->app_status != strtolower('scheduled')) {
+                $history[$k] = $data1;
+                $history[$k]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $k++;
             }
-            if($data1->app_status== strtolower('done')){
-                $history[$i] = $data1;
-            }
+
         }
 
         // $history = array_filter($data, function ($row) {
@@ -1201,6 +1238,60 @@ $i = 0;
         ));
 
     }
+
+    public function cancel_appoint()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        if ($post->app_id == '') {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "appoint id is mandatory",
+            ));
+        }
+        $this->db->query("UPDATE salon_slots SET ss_is_booked = 0, appoint_id = 0 WHERE appoint_id = ? ", [$post->app_id->id]);
+        $this->db->query("UPDATE appointments SET app_status = 'cancelled', app_slots = '' WHERE app_id = ? ", [$post->app_id]);
+        echo json_encode(array(
+            "action" => "success",
+            "msg" => "Your appointment has been cancelled",
+        ));
+
+    }
+
+    public function reschedule_appoint()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+
+        // select all slots where
+
+    }
+
+    public function get_cancellation_policy()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth($post);
+        $data = $this->db
+            ->where("name", 'cancellation_policy')
+            ->get("configs")
+            ->result_object()[0];
+
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $data->value,
+        ));
+
+    }
+
     // ///// salon apis
 
     public function send_otp()
