@@ -38,7 +38,8 @@
         $.post("<?php echo base_url()."api/complete_paypal"; ?>",{
           amount:<?php echo $total; ?>,
           object:details,
-          user_id:<?php echo $the_id; ?>
+          user_id:<?php echo $the_id; ?>,
+          app_id:<?php echo $app_id; ?>
         },function(data){
         	window.location = "<?php echo base_url()."api/paypal_is_good"; ?>";
         });

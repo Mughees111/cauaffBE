@@ -14,7 +14,8 @@
 		"php": ">=5.3.7",
 		"alymosul/exponent-server-sdk-php": "^1.2",
 		"pusher/pusher-php-server": "^6.1",
-		"twilio/sdk": "^6.13"
+		"twilio/sdk": "^6.13",
+		"stripe/stripe-php": "^7.110"
 	},
 	"suggest": {
 		"paragonie/random_compat": "Provides better randomness in PHP 5.x"

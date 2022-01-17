@@ -30,7 +30,7 @@ private static $installed = array (
     'aliases' => 
     array (
     ),
-    'reference' => '5b8c1b474bcf22eb2d5125228d313363f8621afd',
+    'reference' => 'f32f12d7e16775c756e0947bda90d0fc6d08fdf6',
     'name' => 'codeigniter/framework',
   ),
   'versions' => 
@@ -51,7 +51,7 @@ private static $installed = array (
       'aliases' => 
       array (
       ),
-      'reference' => '5b8c1b474bcf22eb2d5125228d313363f8621afd',
+      'reference' => 'f32f12d7e16775c756e0947bda90d0fc6d08fdf6',
     ),
     'doctrine/instantiator' => 
     array (
@@ -392,6 +392,15 @@ private static $installed = array (
       array (
       ),
       'reference' => '99732be0ddb3361e16ad77b68ba41efc8e979019',
+    ),
+    'stripe/stripe-php' => 
+    array (
+      'pretty_version' => 'v7.110.0',
+      'version' => '7.110.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'a463289e4f025b49378b9ebec6457d149036c0c7',
     ),
     'symfony/deprecation-contracts' => 
     array (
