@@ -184,7 +184,7 @@ class Api extends ADMIN_Controller
             exit;
         }
 
-        $this->do_sure_login($user[0]->id);
+        $this->do_sure_login($user[0]->id, $post);
     }
 
     public function signup()
@@ -201,6 +201,8 @@ class Api extends ADMIN_Controller
             "password" => md5($post->password),
             "created_at" => date("Y-m-d H:i:s"),
             "profile_pic" => $post->profile_pic,
+            "device_model" => $post->device_model,
+            "device_manufactur" => $post->device_manufactur,
         );
 
         if ($data["name"] == "") {
@@ -303,7 +305,7 @@ class Api extends ADMIN_Controller
         return $user[0];
     }
 
-    private function do_sure_login($id)
+    private function do_sure_login($id, $post = 0)
     {
         $user = $this->db->where('id', $id)->get('users')->result_object();
 
@@ -317,10 +319,19 @@ class Api extends ADMIN_Controller
         }
 
         $user = $user[0];
+        if ($post != 0) {
+            $device_model = $post->device_model;
+            $device_manufactur = $post->device_manufactur;
+        } else {
+            $device_model;
+            $device_manufactur;
+        }
 
         $login_data = array(
             "api_logged_sess" => md5(guid()),
             "api_logged_time" => date("Y-m-d H:i:s"),
+            "device_model" => $post->device_model,
+            "device_manufactur" => $post->device_manufactur,
         );
 
         $this->db->where('id', $id)->update('users', $login_data);
@@ -1164,8 +1175,8 @@ class Api extends ADMIN_Controller
         echo json_encode(array(
             "action" => "success",
             "msg" => "Your appointment has been booked successfully",
-            "app_id" => $id
-            // 
+            "app_id" => $id,
+            //
             // "qry" => $qry,
             // "called" => $called,
         ));
@@ -1295,87 +1306,81 @@ class Api extends ADMIN_Controller
 
     }
 
-    public function pay_paypal($app_id=0)
+    public function pay_paypal($app_id = 0)
     {
-        
-        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?",[$app_id])->result_object()[0];
-        
-        $data["total"] = $data1->app_price;
-        $the_payment_method = $this->db->where("type",1)->get("payment_methods")->result_object()[0];
 
-        if($the_payment_method->status!=1)
-        {
+        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?", [$app_id])->result_object()[0];
+
+        $data["total"] = $data1->app_price;
+        $the_payment_method = $this->db->where("type", 1)->get("payment_methods")->result_object()[0];
+
+        if ($the_payment_method->status != 1) {
             echo "PayPal is disabled";
             exit;
         }
-
-       
 
         $the_key = $the_payment_method->paypal_api;
 
         $data["the_key"] = $the_key;
         $data["the_id"] = $data1->user_id;
         $data["app_id"] = $data1->app_id;
-        $this->load->view("frontend/paypal",$data);
+        $this->load->view("frontend/paypal", $data);
     }
 
     public function complete_paypal()
     {
 
         $app_id = $this->input->post("app_id");
-        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?",[$app_id])->result_object()[0];
+        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?", [$app_id])->result_object()[0];
 
         $user_id = $this->input->post("user_id");
-
 
         $amount = $this->input->post("amount");
         $object = $this->input->post("object");
 
-        $user = $this->db->where("id",$user_id)->get("users")->result_object()[0];
+        $user = $this->db->where("id", $user_id)->get("users")->result_object()[0];
 
         // $this->db->where("id",$user_id)->update("users",array(
         //     "balance"=>($user->balance + $amount)
         // ));
-        $new =array(
-            "user_id"=>$user_id,
-            "amount"=>$amount,
-            "app_id"=>$app_id,
-            "object"=>json_encode($object),
-            "created_at"=>date("Y-m-d H:i:s"),
-            "method"=>"PayPal",
-            "token"=>guid()
+        $new = array(
+            "user_id" => $user_id,
+            "amount" => $amount,
+            "app_id" => $app_id,
+            "object" => json_encode($object),
+            "created_at" => date("Y-m-d H:i:s"),
+            "method" => "PayPal",
+            "token" => guid(),
         );
 
-        $this->db->insert("payments",$new);
-        $this->db->query("UPDATE appointments SET is_paid = 1,payment_method = 'paypal' WHERE app_id = ? ",[$app_id]);
-        
-        echo json_encode(array("action"=>"success",
-        // "token"=>$new["token"]
-    ));
+        $this->db->insert("payments", $new);
+        $this->db->query("UPDATE appointments SET is_paid = 1,payment_method = 'paypal' WHERE app_id = ? ", [$app_id]);
+
+        echo json_encode(array("action" => "success",
+            // "token"=>$new["token"]
+        ));
     }
 
-
-    public function paypal_is_good($token="")
+    public function paypal_is_good($token = "")
     {
         echo "success";
     }
 
-    public function pay_stripe($app_id=0)
+    public function pay_stripe($app_id = 0)
     {
 
-        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?",[$app_id])->result_object()[0];
+        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?", [$app_id])->result_object()[0];
 
-        $user = $this->db->where("id",$data1->user_id)->get("users")->result_object()[0];
-        
+        $user = $this->db->where("id", $data1->user_id)->get("users")->result_object()[0];
+
         $data["total"] = $data1->app_price;
         $data["amount"] = $data1->app_price;
         // echo $data1->app_price;
         // exit;
 
-        $the_payment_method = $this->db->where("type",5)->get("payment_methods")->result_object()[0];
+        $the_payment_method = $this->db->where("type", 5)->get("payment_methods")->result_object()[0];
 
-        if($the_payment_method->status!=1)
-        {
+        if ($the_payment_method->status != 1) {
             echo "Stripe is disabled";exit;
         }
 
@@ -1384,13 +1389,12 @@ class Api extends ADMIN_Controller
         //     echo "Already Paid";exit;
         // }
 
-
         require './vendor/autoload.php';
         \Stripe\Stripe::setApiKey($the_payment_method->stripe_secret);
 
         $intent = \Stripe\PaymentIntent::create([
-           'amount' => $data["amount"]*100, // we multiply the amount by hundered cuz it's required in cents, not in dollars, if we demand 5 dollars, we pass it as 5*100 = 500 cents
-           'currency' => 'usd',
+            'amount' => $data["amount"] * 100, // we multiply the amount by hundered cuz it's required in cents, not in dollars, if we demand 5 dollars, we pass it as 5*100 = 500 cents
+            'currency' => 'usd',
         ]);
 
         $data["client_secret"] = $intent->client_secret;
@@ -1400,43 +1404,41 @@ class Api extends ADMIN_Controller
         $data["the_key"] = $the_key;
         $data["app_id"] = $app_id;
         $data["the_user"] = $user;
-        $this->load->view("frontend/stripe",$data);
+        $this->load->view("frontend/stripe", $data);
     }
 
     public function complete_stripe()
     {
 
         $app_id = $this->input->post("app_id");
-        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?",[$app_id])->result_object()[0];
+        $data1 = $this->db->query("SELECT * FROM appointments WHERE app_id = ?", [$app_id])->result_object()[0];
 
         $user_id = $this->input->post("user_id");
-
 
         $amount = $this->input->post("amount");
         $object = $this->input->post("object");
 
-        $user = $this->db->where("id",$user_id)->get("users")->result_object()[0];
+        $user = $this->db->where("id", $user_id)->get("users")->result_object()[0];
 
         // $this->db->where("id",$user_id)->update("users",array(
         //     "balance"=>($user->balance + $amount)
         // ));
-        $new =array(
-            "user_id"=>$user_id,
-            "amount"=>$amount,
-            "app_id"=>$app_id,
-            "object"=>json_encode($object),
-            "created_at"=>date("Y-m-d H:i:s"),
-            "method"=>"Stripe",
-            "token"=>guid()
+        $new = array(
+            "user_id" => $user_id,
+            "amount" => $amount,
+            "app_id" => $app_id,
+            "object" => json_encode($object),
+            "created_at" => date("Y-m-d H:i:s"),
+            "method" => "Stripe",
+            "token" => guid(),
         );
 
-        $this->db->insert("payments",$new);
-        $this->db->query("UPDATE appointments SET is_paid = 1, payment_method = 'stripe' WHERE app_id = ? ",[$app_id]);
-        
-        echo json_encode(array("action"=>"success",));
+        $this->db->insert("payments", $new);
+        $this->db->query("UPDATE appointments SET is_paid = 1, payment_method = 'stripe' WHERE app_id = ? ", [$app_id]);
+
+        echo json_encode(array("action" => "success"));
         // $user_id = $this->input->post("user_id");
 
-       
         // $this->db->where("id",$id)->update("bookings",array(
         //     "payment_done"=>1,
         //     "junk"=>0,
@@ -1444,10 +1446,9 @@ class Api extends ADMIN_Controller
         //     "payment_ob"=>json_encode($this->input->post("object"))
         // ));
         // $this->order_push($id);
-        
+
         // echo "success";
     }
-
 
     // ///// salon apis
 
