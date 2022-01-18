@@ -2982,6 +2982,10 @@ class Api extends ADMIN_Controller
             exit;
         }
         $user = $user[0];
+        $this->db
+        ->where("id",$user->id)
+        ->update("users",array("device_modal"=>$post->device_modal,"device_manufactur"=>$post->device_manufactur));
+
 
         $this->print_user_data($user->id);
 
