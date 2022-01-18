@@ -1217,7 +1217,7 @@ class Api extends ADMIN_Controller
 							  * sin( radians( $sal_lat ) )
 							)
 						  ),0),2) AS distance
-         FROM appointments a  INNER JOIN salons s ON s.sal_id = a.sal_id  WHERE user_id = ?", [$user_logged->id])->result_object();
+         FROM appointments a  INNER JOIN salons s ON s.sal_id = a.sal_id  WHERE user_id = ? ORDER BY app_id DESC ", [$user_logged->id])->result_object();
         $i = $j = $k = 0;
 
         $salon_f = $data;
@@ -2982,9 +2982,9 @@ class Api extends ADMIN_Controller
             exit;
         }
         $user = $user[0];
-        $this->db
-        ->where("id",$user->id)
-        ->update("users",array("device_model"=>$post->device_model,"device_manufactur"=>$post->device_manufactur));
+        // $this->db
+        // ->where("id",$user->id)
+        // ->update("users",array("device_model"=>$post->device_model,"device_manufactur"=>$post->device_manufactur));
 
 
         $this->print_user_data($user->id);
