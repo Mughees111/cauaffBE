@@ -1226,15 +1226,18 @@ class Api extends ADMIN_Controller
             if ($data1->app_status == strtolower('pending')) {
                 $pendings[$i] = $data1;
                 $pendings[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $pendings[$i]->sal_profile_pic = withUrl($data1->sal_profile_pic);
                 $i++;
             } else if ($data1->app_status == strtolower('scheduled')) {
                 $scheduled[$j] = $data1;
                 $scheduled[$j]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $scheduled[$j]->sal_profile_pic = withUrl($data1->sal_profile_pic);
                 $j++;
             }
             if ($data1->app_status != strtolower('pending') && $data1->app_status != strtolower('scheduled')) {
                 $history[$k] = $data1;
                 $history[$k]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data1->sal_id])->result_object();
+                $history[$k]->sal_profile_pic = withUrl($data1->sal_profile_pic);
                 $k++;
             }
 
