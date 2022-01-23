@@ -607,6 +607,12 @@ class Api extends ADMIN_Controller
             $post = (object) $_POST;
         }
         $user_logged = $this->do_auth_salon($post);
+        if (!isset($post->sal_hours)) {
+            $sal_hours = null;
+        } else {
+            $sal_hours = $post->sal_hours;
+        }
+
         $data = array(
             "sal_pic" => $post->sal_pic,
             "steps" => $post->step,
@@ -618,7 +624,7 @@ class Api extends ADMIN_Controller
             "sal_address" => $post->sal_address,
             "sal_description" => $post->sal_description,
 
-            "sal_hours" => serialize($post->sal_hours), // man
+            "sal_hours" => $sal_hours ? serialize($post->sal_hours) : null, // man
 
         );
         $final = array_filter($data);
@@ -813,7 +819,6 @@ class Api extends ADMIN_Controller
                 // $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
                 if ($salon->sal_type == 'Men') {
                     $sal_mens_final[$i] = $salon_f[$i];
-
                 } else {
                     $sal_womens_final[$i] = $salon_f[$i];
                 }
@@ -854,8 +859,8 @@ class Api extends ADMIN_Controller
             return;
         }
 
-        $imgs=$this->db->where('sal_id',$post->sal_id )->get('sal_imgs')->result_object();
-        $sal_services=$this->db->where('sal_id',$post->sal_id )->get('sal_services')->result_object();
+        $imgs = $this->db->where('sal_id', $post->sal_id)->get('sal_imgs')->result_object();
+        $sal_services = $this->db->where('sal_id', $post->sal_id)->get('sal_services')->result_object();
         $i = 0;
         foreach ($imgs as $img) {
             $imgs[$i]->img = withurl($img->img);
@@ -864,7 +869,7 @@ class Api extends ADMIN_Controller
         echo json_encode(array(
             "action" => "success",
             "imgs" => $imgs,
-            "sal_services" => $sal_services
+            "sal_services" => $sal_services,
         ));
 
     }
