@@ -285,6 +285,26 @@ class Api extends ADMIN_Controller
         ));
     }
 
+    private function do_auth_salon($post)
+    {
+        $user =
+        $this->db->where('api_logged_sess', $post->token)
+            ->where('sal_status', 1)
+            ->where('is_deleted', 0)
+            ->get('salons')
+            ->result_object();
+
+        if (empty($user) || $post->token == "") {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "Invalid login credentials",
+            ));
+            exit;
+        }
+
+        return $user[0];
+    }
+
     private function do_auth($post)
     {
         $user =
@@ -379,6 +399,18 @@ class Api extends ADMIN_Controller
 
         $user = $this->db->where("sal_id", $id)->get("salons")->result_object()[0];
         $services = $this->db->where("sal_id", $id)->get("sal_services")->result_object();
+        $imgs = $this->db->where("sal_id", $id)->get("sal_imgs")->result_object();
+
+        $i = 0;
+        foreach ($imgs as $img) {
+            $imgs[$i]->img = withurl($img->img);
+            $i++;
+        }
+
+        // $i = 0;
+        // foreach($imgs as $img){
+        //     $img[$i]->img = withUrl($img->$img);
+        // }
         echo json_encode(array(
             "action" => "success",
             "data" => array(
@@ -411,7 +443,7 @@ class Api extends ADMIN_Controller
                 "step" => $user->steps,
                 "sal_hours" => unserialize($user->sal_hours),
                 "sal_services" => $services,
-
+                "sal_imgs" => $imgs,
             ),
         )
         );
@@ -546,6 +578,28 @@ class Api extends ADMIN_Controller
 
     }
 
+    public function add_sal_imgs()
+    {
+
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $imgs = $post->imgs;
+        $sal_id = $user_logged->sal_id;
+        $makeString = "(";
+        foreach ($imgs as $img) {
+            $makeString .= "'" . $img . "'," . "'" . $sal_id . "'),(";
+        }
+
+        $makeString = substr($makeString, 0, strlen($makeString) - 2);
+        $data = $this->db->query("INSERT INTO sal_imgs (img, sal_id) VALUES" . $makeString);
+
+        $this->print_salon_data($sal_id);
+
+    }
+
     public function update_salon()
     {
         $post = json_decode(file_get_contents("php://input"));
@@ -558,11 +612,48 @@ class Api extends ADMIN_Controller
             "steps" => $post->step,
             "sal_profile_pic" => $post->sal_profile_pic,
             "payment_method" => $post->payment_method,
-        );
 
-        $this->db->where("sal_id", $user_logged->sal_id)->update("salons", $data);
+            "sal_name" => $post->sal_name,
+            "sal_contact_person" => $post->sal_contact_person,
+            "sal_address" => $post->sal_address,
+            "sal_description" => $post->sal_description,
+
+            "sal_hours" => serialize($post->sal_hours), // man
+
+        );
+        $final = array_filter($data);
+        $this->db->where("sal_id", $user_logged->sal_id)->update("salons", $final);
         $this->print_salon_data($user_logged->sal_id);
 
+    }
+
+    public function update_salon_service()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+
+        if ($post->id == "") {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "service id is mandatory",
+                "error_type" => 1,
+            ));
+            return;
+        }
+
+        $data = array(
+            "s_desc" => $post->s_desc,
+            "s_name" => $post->s_name,
+            "s_price" => $post->s_price,
+            "s_time_mins" => $post->s_time_mins,
+        );
+
+        $final = array_filter($data);
+        $this->db->where("id", $post->id)->update("sal_services", $final);
+        $this->print_salon_data($user_logged->sal_id);
     }
 
     public function check_sal_email_exists()
@@ -624,6 +715,7 @@ class Api extends ADMIN_Controller
                 // "step" => $salon->steps,
                 "sal_hours" => unserialize($salon->sal_hours),
                 "sal_services" => $salon->sal_services,
+                "sal_imgs" => $salon->sal_imgs,
 
             ];
             $i++;
@@ -718,7 +810,7 @@ class Api extends ADMIN_Controller
             $sal_womens_final;
             $i = 0;
             foreach ($salons as $salon) {
-                $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+                // $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
                 if ($salon->sal_type == 'Men') {
                     $sal_mens_final[$i] = $salon_f[$i];
 
@@ -744,6 +836,36 @@ class Api extends ADMIN_Controller
                 "data" => $final,
             ));
         }
+
+    }
+
+    public function get_salon_pics()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user = $this->do_auth($post);
+        if ($post->sal_id == "") {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "sal_id is mandatory",
+            ));
+            return;
+        }
+
+        $imgs=$this->db->where('sal_id',$post->sal_id )->get('sal_imgs')->result_object();
+        $sal_services=$this->db->where('sal_id',$post->sal_id )->get('sal_services')->result_object();
+        $i = 0;
+        foreach ($imgs as $img) {
+            $imgs[$i]->img = withurl($img->img);
+            $i++;
+        }
+        echo json_encode(array(
+            "action" => "success",
+            "imgs" => $imgs,
+            "sal_services" => $sal_services
+        ));
 
     }
 
@@ -1270,7 +1392,7 @@ class Api extends ADMIN_Controller
             ));
         }
         $this->db->query("UPDATE salon_slots SET ss_is_booked = 0, appoint_id = 0 WHERE appoint_id = ? ", [$post->app_id->id]);
-        $this->db->query("UPDATE appointments SET app_status = 'cancelled', app_slots = '' WHERE app_id = ? ", [$post->app_id]);
+        $this->db->query("UPDATE appointments SET app_status = 'cancelled', app_slots = '', cancelled_by = 'user' WHERE app_id = ? ", [$post->app_id]);
         echo json_encode(array(
             "action" => "success",
             "msg" => "Your appointment has been cancelled",
@@ -1453,57 +1575,155 @@ class Api extends ADMIN_Controller
         // echo "success";
     }
 
-    // ///// salon apis
-
-    public function send_otp()
+    public function get_sal_profile()
     {
         $post = json_decode(file_get_contents("php://input"));
         if (empty($post)) {
             $post = (object) $_POST;
         }
+        $user_logged = $this->do_auth_salon($post);
+        $data = array($user_logged);
+        $data = $this->make_salons_b($data);
+        // $i=0;
+        // foreach ($data as $data1) {
+        $data[0]["sal_services"] = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data[0]["sal_id"]])->result_object();
+        // $sal_id = ;
+        // $i++;
+        // }
 
-        $country_code = $post->c_code;
-        $phone = $post->phone;
-        if (substr($phone, 0, 1) == "0") {
-            $phone = ltrim($phone, '0');
+        echo json_encode(array(
+            "action" => "success",
+            "sal_id" => $sal_id,
+            "data" => $data,
+
+        ));
+        // $salon = $this->db->query("SELECT * FROM salons  WHERE sal_id = ? ", [$user_logged->id])->result_object();
+
+    }
+
+    public function get_sal_appoints()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        if ($post->app_date) {
+            $app_date = $post->app_date;
+        } else {
+            $app_date = date("Y-m-d");
         }
 
-        $to = "+" . ((string) $country_code) . $phone;
+        $data = $this->db->query("SELECT a.*,
+                 u.name,u.profile_pic,u.username,u.email,u.phone,u.address,u.country,u.city,u.street,u.zip
+                 FROM appointments a INNER JOIN users u ON a.user_id  = u.id  WHERE a.sal_id = ? AND a.app_date = ? ", [$user_logged->sal_id, $app_date])->result_object();
+        $i = 0;
+        foreach ($data as $data1) {
+            $data[$i]->profile_pic = withurl($data1->profile_pic);
+            $i++;
+        }
 
-        // Your Account SID and Auth Token from twilio.com/console
-        $twillio_db = $this->db->where("id", 1)->get("settings")->result_object()[0];
-        $sid = $twillio_db->twillio_pub;
-        $token = $twillio_db->twillio_sec;
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $data,
 
-        $twilio = new Client($sid, $token);
+        ));
+    }
 
+    public function confirm_app()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+
+        if (!$post->app_id) {
+            echo json_encode(array(
+                "action" => "error",
+                "error" => "app_id is mandotory",
+            ));
+        }
+        $this->db->query("UPDATE appointments SET app_status = 'scheduled' WHERE app_id = ? ", [$post->app_id]);
+        echo json_encode(array("action" => "success", "data" => "1"));
+    }
+
+    public function cancel_app_vendor()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+
+        if (!$post->app_id) {
+            echo json_encode(array(
+                "action" => "error",
+                "error" => "app_id is mandotory",
+            ));
+        }
+        $qry = "UPDATE appointments SET app_status = 'cancelled',app_slots = '', cancelled_by = 'salon', cancelled_reason = '" . $post->cancelled_reason . "' WHERE app_id = " . $post->app_id;
         try {
-
-            $service = $twilio->verify->v2->services
-                ->create(settings()->site_title . " verification service");
-
-            $verification = $twilio->verify->v2->services($service->sid)
-                ->verifications
-                ->create($to, "sms");
-
+            $this->db->query($qry);
         } catch (Exception $e) {
             echo json_encode(array("action" => "failed", "err" => "Sorry, twillio seems busy"));
             return;
         }
 
-        $this->db->where(array("code" => $post->c_code, "phone" => $post->phone))->delete("temp_phones");
-        $this->db->insert("temp_phones",
-            array(
-                "sid" => $service->sid,
-                "code" => $post->c_code,
-                "phone" => $post->phone,
-                "code_text" => $post->c_code_text,
-            )
-        );
-
-        echo json_encode(array("action" => "success", "slip" => $this->db->insert_id()));
-
+        echo json_encode(array("action" => "success", "data" => "1", "qry" => $qry));
     }
+
+    // ///// salon APIs
+
+    // public function send_otp()
+    // {
+    //     $post = json_decode(file_get_contents("php://input"));
+    //     if (empty($post)) {
+    //         $post = (object) $_POST;
+    //     }
+
+    //     $country_code = $post->c_code;
+    //     $phone = $post->phone;
+    //     if (substr($phone, 0, 1) == "0") {
+    //         $phone = ltrim($phone, '0');
+    //     }
+
+    //     $to = "+" . ((string) $country_code) . $phone;
+
+    //     // Your Account SID and Auth Token from twilio.com/console
+    //     $twillio_db = $this->db->where("id", 1)->get("settings")->result_object()[0];
+    //     $sid = $twillio_db->twillio_pub;
+    //     $token = $twillio_db->twillio_sec;
+
+    //     $twilio = new Client($sid, $token);
+
+    //     try {
+
+    //         $service = $twilio->verify->v2->services
+    //             ->create(settings()->site_title . " verification service");
+
+    //         $verification = $twilio->verify->v2->services($service->sid)
+    //             ->verifications
+    //             ->create($to, "sms");
+
+    //     } catch (Exception $e) {
+    //         echo json_encode(array("action" => "failed", "err" => "Sorry, twillio seems busy"));
+    //         return;
+    //     }
+
+    //     $this->db->where(array("code" => $post->c_code, "phone" => $post->phone))->delete("temp_phones");
+    //     $this->db->insert("temp_phones",
+    //         array(
+    //             "sid" => $service->sid,
+    //             "code" => $post->c_code,
+    //             "phone" => $post->phone,
+    //             "code_text" => $post->c_code_text,
+    //         )
+    //     );
+
+    //     echo json_encode(array("action" => "success", "slip" => $this->db->insert_id()));
+
+    // }
 
     // public function resend_otp()
     // {
@@ -2944,26 +3164,6 @@ class Api extends ADMIN_Controller
         return $settings->currency;
     }
 
-    private function do_auth_salon($post)
-    {
-        $user =
-        $this->db->where('api_logged_sess', $post->token)
-            ->where('sal_status', 1)
-            ->where('is_deleted', 0)
-            ->get('salons')
-            ->result_object();
-
-        if (empty($user) || $post->token == "") {
-            echo json_encode(array(
-                "action" => "failed",
-                "error" => "Invalid login credentials",
-            ));
-            exit;
-        }
-
-        return $user[0];
-    }
-
     public function check_login()
     {
         $post = json_decode(file_get_contents("php://input"));
@@ -2988,7 +3188,6 @@ class Api extends ADMIN_Controller
         // $this->db
         // ->where("id",$user->id)
         // ->update("users",array("device_model"=>$post->device_model,"device_manufactur"=>$post->device_manufactur));
-
 
         $this->print_user_data($user->id);
 
