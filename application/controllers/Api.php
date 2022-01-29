@@ -201,8 +201,10 @@ class Api extends ADMIN_Controller
             "password" => md5($post->password),
             "created_at" => date("Y-m-d H:i:s"),
             "profile_pic" => $post->profile_pic,
+            "phone" => $post->phone,
             "device_model" => $post->device_model,
             "device_manufactur" => $post->device_manufactur,
+            "added_by" => $post->added_by ? $post->added_by : null,
         );
 
         if ($data["name"] == "") {
@@ -359,8 +361,39 @@ class Api extends ADMIN_Controller
         $this->print_user_data($id);
     }
 
+    public function login_vendor()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+
+        $user = $this->db
+        // ->group_start()
+            ->where('sal_email', $post->sal_email)
+        // ->group_end()
+        // ->group_start()
+            ->where('sal_password', md5($post->sal_password))
+            ->where('sal_status', 1)
+            ->where('is_deleted', 0)
+        // ->group_end()
+            ->get('salons')
+            ->result_object();
+
+        if (empty($user)) {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "Invalid login credentials",
+            ));
+            exit;
+        }
+
+        $this->do_sure_salon_login($user[0]->sal_id, $post);
+    }
+
     private function do_sure_salon_login($id)
     {
+
         $user = $this->db->where('sal_id', $id)->get('salons')->result_object();
         if (empty($user)) {
             echo json_encode(array(
@@ -484,7 +517,7 @@ class Api extends ADMIN_Controller
                 "username" => $user->username,
                 "token" => $user->api_logged_sess,
                 "email" => $user->email,
-                "profile_pic" => $user->profile_pic ? $user->profile_pic : "dummy_image.png",
+                "profile_pic" => $user->profile_pic ? withUrl($user->profile_pic) : withUrl("dummy_image.png"),
                 "profile_pic_url" => withUrl($user->profile_pic),
                 "phone" => $user->phone ? $user->phone : "",
                 "created_at" => $user->created_at,
@@ -1109,7 +1142,9 @@ class Api extends ADMIN_Controller
         if (empty($post)) {
             $post = (object) $_POST;
         }
-        $user_logged = $this->do_auth($post);
+        if (!isset($post->salon)) {
+            $user_logged = $this->do_auth($post);
+        }
 
         if (!$post->service_time) {
             echo json_encode(array("action" => "failed", "error" => "service time is mandatory"));
@@ -1203,7 +1238,18 @@ class Api extends ADMIN_Controller
         if (empty($post)) {
             $post = (object) $_POST;
         }
-        $user_logged = $this->do_auth($post);
+        $id = $post->user_id;
+        if (!isset($post->salon)) {
+            $user_logged = $this->do_auth($post);
+            $id = $user_logged->id;
+        } else if (!isset($post->user_id)) {
+            echo json_encode(array("action" => "failed", "error" => "user_id is mandatory"));
+            return;
+        }
+
+        // echo json_encode(array("action"=>"success", "id"=>$id));
+        // return;
+        // exit;
 
         if ($post->app_est_duration == "") {
             echo json_encode(array("action" => "failed", "error" => "appointment duration is mandatory"));
@@ -1224,7 +1270,7 @@ class Api extends ADMIN_Controller
         $app_end_time = date('H:i', strtotime($post->app_start_time . ' +' . $post->app_est_duration . ' minutes'));
 
         $data = array(
-            "user_id" => $user_logged->id,
+            "user_id" => $id,
             "user_gender" => $post->user_gender,
             "app_services" => $post->app_services,
             "app_price" => $post->app_price,
@@ -1675,7 +1721,105 @@ class Api extends ADMIN_Controller
             return;
         }
 
-        echo json_encode(array("action" => "success", "data" => "1", "qry" => $qry));
+        echo json_encode(array("action" => "success", "data" => "1"));
+    }
+
+    public function get_sal_clients()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $data = $this->db->query("SELECT Distinct u.id, u.name, u.username, u.email, u.phone, u.address,u.profile_pic FROM users u LEFT OUTER JOIN appointments a ON a.user_id =  u.id  WHERE a.sal_id = ? AND u.status = 1 and u.is_deleted = 0 OR u.added_by = ? ", [$user_logged->sal_id, $user_logged->sal_id])->result_object();
+        foreach ($data as $data1) {
+            $data1->profile_pic = withUrl($data1->profile_pic);
+        }
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $data,
+        ));
+
+    }
+
+    public function get_client_apps()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        if (!isset($post->user_id)) {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "user_id is mandatory",
+            ));
+            return;
+        }
+        $data = $this->db->query("SELECT * FROM appointments WHERE user_id =? AND sal_id = ?  ", [$post->user_id, $user_logged->sal_id])->result_object();
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $data,
+        ));
+
+    }
+
+    public function make_group()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        if (!isset($post->g_name)) {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "Group subject is mandatory",
+            ));
+            return;
+        }
+        if (!isset($post->user_ids)) {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "user_ids are mandatory",
+            ));
+            return;
+        }
+        $this->db->insert("sal_groups",
+            array(
+                "sal_id" => $user_logged->sal_id,
+                "g_name" => $post->g_name,
+                "user_ids" => $post->user_ids,
+                "g_pic" => $post->g_pic,
+            )
+        );
+        echo json_encode(array(
+            "action" => "success",
+            "msg" => "Group has been successfully created",
+        ));
+        return;
+    }
+
+    public function get_sal_groups()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $data = $this->db->query("SELECT * FROM sal_groups WHERE sal_id = ?", [$user_logged->sal_id])->result_object();
+        foreach($data as $data1){
+            if($data1->g_pic){
+                $data1->g_pic = withUrl($data1->g_pic);
+            }
+            
+        }
+        echo json_encode(array(
+            "action" => "success",
+            "data" => $data,
+        ));
+        return;
+
     }
 
     // ///// salon APIs
