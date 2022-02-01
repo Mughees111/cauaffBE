@@ -37,7 +37,7 @@ class Api extends ADMIN_Controller
             "sal_type" => $post->sal_type, // man
             "sal_pic" => $post->sal_pic,
             "sal_profile_pic" => $post->sal_profile_pic,
-            "sal_password" => md5($post->password),
+            "sal_password" => md5($post->sal_password),
             "push_id" => $post->push_id,
             "sal_lat" => $post->sal_lat,
             "sal_lng" => $post->sal_lng,
@@ -282,6 +282,23 @@ class Api extends ADMIN_Controller
 
         $this->db->where('id', $user->id)->update('users', $login_data);
 
+        echo json_encode(array(
+            "action" => "success",
+        ));
+    }
+
+    public function logout_vendor()
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user = $this->do_auth_salon($post);
+        $login_data = array(
+            "api_logged_sess" => md5(guid()),
+            "push_id" => "",
+        );
+        $this->db->where('sal_id', $user->sal_id)->update('salons', $login_data);
         echo json_encode(array(
             "action" => "success",
         ));
@@ -793,7 +810,11 @@ class Api extends ADMIN_Controller
 
             $salons = $this->db->query("SELECT *,
              round(IFNULL((
-							6371 * acos (
+                -- To convert to miles, multiply by 3961.
+                -- To convert to kilometers, multiply by 6373.
+                -- To convert to meters, multiply by 6373000.
+                -- To convert to feet, multiply by (3961 * 5280) 20914080.
+							3961 * acos (
 							  cos ( radians($lat) )
 							  * cos( radians( $sal_lat ) )
 							  * cos( radians( $sal_lng ) - radians($lng) )
@@ -833,9 +854,10 @@ class Api extends ADMIN_Controller
             // }
 
             // $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
+            
             $salons = $this->db->query("SELECT s.*,
              round(IFNULL((
-							6371 * acos (
+                3961 * acos (
 							  cos ( radians($lat) )
 							  * cos( radians( $sal_lat ) )
 							  * cos( radians( $sal_lng ) - radians($lng) )
@@ -932,7 +954,7 @@ class Api extends ADMIN_Controller
 
         $salons = $this->db->query("SELECT s.*,
              round(IFNULL((
-							6371 * acos (
+                3961 * acos (
 							  cos ( radians($lat) )
 							  * cos( radians( $sal_lat ) )
 							  * cos( radians( $sal_lng ) - radians($lng) )
@@ -1382,7 +1404,7 @@ class Api extends ADMIN_Controller
         $data = $this->db->query(
             "SELECT a.*,s.sal_id, s.sal_name, s.sal_address,s.sal_country,s.sal_city,s.sal_reviews, s.sal_zip,s.sal_contact_person,s.sal_email,s.sal_phone, s.sal_pic, s.sal_profile_pic,s.sal_lat,s.sal_lng,s.sal_type,s.sal_description,s.sal_state,
             round(IFNULL((
-							6371 * acos (
+                3961 * acos (
 							  cos ( radians($lat) )
 							  * cos( radians( $sal_lat ) )
 							  * cos( radians( $sal_lng ) - radians($lng) )
@@ -1808,11 +1830,11 @@ class Api extends ADMIN_Controller
         }
         $user_logged = $this->do_auth_salon($post);
         $data = $this->db->query("SELECT * FROM sal_groups WHERE sal_id = ?", [$user_logged->sal_id])->result_object();
-        foreach($data as $data1){
-            if($data1->g_pic){
+        foreach ($data as $data1) {
+            if ($data1->g_pic) {
                 $data1->g_pic = withUrl($data1->g_pic);
             }
-            
+
         }
         echo json_encode(array(
             "action" => "success",
