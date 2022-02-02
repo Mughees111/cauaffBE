@@ -3241,6 +3241,7 @@ class Api extends ADMIN_Controller
 
             "email" => $post->email,
             "name" => $post->name,
+            "username" => $post->name,
             "signup_type" => $post->type,
             "social_id" => $post->token,
             "password" => md5($post->username . time() . rand(05405, 4594059)),
