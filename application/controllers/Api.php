@@ -865,7 +865,7 @@ class Api extends ADMIN_Controller
 							  * sin( radians( $sal_lat ) )
 							)
 						  ),0),2) AS distance,
-            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s ORDER BY distance ASC ", [$user->id])->result_object();
+            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s WHERE s.is_deleted = 0 AND s.is_active = 1 ORDER BY distance ASC ", [$user->id])->result_object();
             $salon_f = $salons;
             $sal_mens_final;
             $sal_womens_final;
