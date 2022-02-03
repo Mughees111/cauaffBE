@@ -588,7 +588,7 @@ class Api extends ADMIN_Controller
         if ($data["sal_id"] == "") {
             echo json_encode(array(
                 "action" => "failed",
-                "error" => "Please enter salon",
+                "error" => "salon id is mandatory",
                 "error_type" => 1,
 
             ));
@@ -626,6 +626,26 @@ class Api extends ADMIN_Controller
         }
         $this->print_salon_data($user_logged->sal_id);
 
+    }
+
+    public function del_salon_imgs() //vendor side
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        if($post->id==''){
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "image id is mandatory",
+                "error_type" => 1,
+
+            ));
+            return;
+        }
+        $this->db->query("DELETE FROM sal_imgs WHERE id = ? ",[$post->id]);
+        $this->print_salon_data($user_logged->sal_id);
     }
 
     public function add_sal_imgs()
@@ -854,7 +874,7 @@ class Api extends ADMIN_Controller
             // }
 
             // $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
-            
+
             $salons = $this->db->query("SELECT s.*,
              round(IFNULL((
                 3961 * acos (
@@ -899,7 +919,8 @@ class Api extends ADMIN_Controller
 
     }
 
-    public function get_salon_pics()
+    public function get_salon_pics() //user
+
     {
         $post = json_decode(file_get_contents("php://input"));
         if (empty($post)) {
@@ -1473,17 +1494,64 @@ class Api extends ADMIN_Controller
 
     }
 
-    public function reschedule_appoint()
-    {
-        $post = json_decode(file_get_contents("php://input"));
-        if (empty($post)) {
-            $post = (object) $_POST;
-        }
-        $user_logged = $this->do_auth($post);
+    // public function update_app() // mainly for change the app_status, completed or completed and reviewed and for giving a review
 
-        // select all slots where
+    // {
+    //     $post = json_decode(file_get_contents("php://input"));
+    //     if (empty($post)) {
+    //         $post = (object) $_POST;
+    //     }
+    //     $user_logged = $this->do_auth_salon($post);
 
-    }
+    //     if ($post->app_id == '') {
+    //         echo json_encode(array(
+    //             "action" => "failed",
+    //             "error" => "appoint id is mandatory",
+    //         ));
+    //     }
+
+    //     if ($post->app_status == 'completed') {
+    //         $this->db->query("UPDATE appointments SET app_status = 'completed' WHERE app_id = ? ", [$post->app_id]);
+    //     } else if ($post->app_status == 'completed & reviewed') {
+    //         $this->db->query("UPDATE appointments SET app_status = 'completed & reviewed', app_rating = ?, app_review = ?  WHERE app_id = ? ", [$post->app_id]);
+    //         if (isset(stelen($post->rev_rating))) {
+    //             if($post->user_id==''){
+    //                 echo json_encode(array(
+    //                     "action" => "failed",
+    //                     "error" => "user_id is mandatory",
+    //                 ));
+    //             }
+    //             if($post->sal_id==''){
+    //                 echo json_encode(array(
+    //                     "action" => "failed",
+    //                     "error" => "user_id is mandatory",
+    //                 ));
+    //             }
+    //             if($post->user_id==''){
+    //                 echo json_encode(array(
+    //                     "action" => "failed",
+    //                     "error" => "user_id is mandatory",
+    //                 ));
+    //             }
+
+    //         }
+    //         $review = array(
+    //             "user_id" => $post->user_id,
+    //             "sal_id" => $post->sal_id,
+    //             "app_id" => $post->app_id,
+    //             "rev_rating" => $post->rev_rating,
+    //             "rev_text" => $post->rev_text,
+    //         );
+
+    //         $this->db->insert("reviews", $review);
+
+    //     }
+
+    //     // if($post->us)
+
+    //     // select all slots where
+
+    // }
 
     public function get_cancellation_policy()
     {
