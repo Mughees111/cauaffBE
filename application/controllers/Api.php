@@ -450,6 +450,8 @@ class Api extends ADMIN_Controller
         $user = $this->db->where("sal_id", $id)->get("salons")->result_object()[0];
         $services = $this->db->where("sal_id", $id)->get("sal_services")->result_object();
         $imgs = $this->db->where("sal_id", $id)->get("sal_imgs")->result_object();
+        $sal_reviews = $this->db->query("SELECT r.*, u.profile_pic,u.username, u.phone, u.email FROM reviews r INNER JOIN users u ON r.user_id = u.id WHERE r.sal_id = ? ", [$id])->result_object();
+        $sal_ratings = $this->db->query("SELECT AVG(rev_rating) as average FROM `reviews` where sal_id = ? ", [$id])->result_object();
 
         $i = 0;
         foreach ($imgs as $img) {
@@ -457,6 +459,9 @@ class Api extends ADMIN_Controller
             $i++;
         }
 
+        foreach ($sal_reviews as $review) {
+            $review->profile_pic = withUrl($review->profile_pic);
+        }
         // $i = 0;
         // foreach($imgs as $img){
         //     $img[$i]->img = withUrl($img->$img);
@@ -494,6 +499,12 @@ class Api extends ADMIN_Controller
                 "sal_hours" => unserialize($user->sal_hours),
                 "sal_services" => $services,
                 "sal_imgs" => $imgs,
+                "sal_reviews" => $sal_reviews,
+                "sal_ratings" => $sal_ratings[0]->average,
+
+                "auto_app_accept" => $user->auto_app_accept,
+                "mobile_pay" => $user->mobile_pay,
+                "allow_push" => $user->allow_push,
             ),
         )
         );
@@ -629,13 +640,14 @@ class Api extends ADMIN_Controller
     }
 
     public function del_salon_imgs() //vendor side
+
     {
         $post = json_decode(file_get_contents("php://input"));
         if (empty($post)) {
             $post = (object) $_POST;
         }
         $user_logged = $this->do_auth_salon($post);
-        if($post->id==''){
+        if ($post->id == '') {
             echo json_encode(array(
                 "action" => "failed",
                 "error" => "image id is mandatory",
@@ -644,7 +656,7 @@ class Api extends ADMIN_Controller
             ));
             return;
         }
-        $this->db->query("DELETE FROM sal_imgs WHERE id = ? ",[$post->id]);
+        $this->db->query("DELETE FROM sal_imgs WHERE id = ? ", [$post->id]);
         $this->print_salon_data($user_logged->sal_id);
     }
 
@@ -774,13 +786,18 @@ class Api extends ADMIN_Controller
                 "sal_state" => $salon->sal_state,
 
                 "sal_reviews" => $salon->sal_reviews,
-                "sal_rating" => $salon->sal_rating,
+                "sal_ratings" => number_format($salon->sal_ratings, 1),
+
                 "sal_website" => $salon->sal_website,
                 "sal_search_words" => $salon->sal_search_words,
                 "sal_description" => $salon->sal_description,
                 "sal_type" => $salon->sal_type,
 
                 // "token" => $salon->api_logged_sess,
+                "auto_app_accept" => $salon->auto_app_accept,
+                "mobile_pay" => $salon->mobile_pay,
+                "allow_push" => $salon->allow_push,
+
                 "sal_email" => $salon->sal_email,
                 "sal_pic" => withUrl($salon->sal_pic),
                 "sal_profile_pic" => withUrl($salon->sal_profile_pic),
@@ -828,7 +845,7 @@ class Api extends ADMIN_Controller
 
         if ($post->search_keyword) {
 
-            $salons = $this->db->query("SELECT *,
+            $salons = $this->db->query("SELECT s.*,
              round(IFNULL((
                 -- To convert to miles, multiply by 3961.
                 -- To convert to kilometers, multiply by 6373.
@@ -841,16 +858,20 @@ class Api extends ADMIN_Controller
 							  + sin ( radians($lat) )
 							  * sin( radians( $sal_lat ) )
 							)
-						  ),0),2) AS distance
+						  ),0),2) AS distance,
 
-             FROM salons WHERE sal_search_words LIKE '%" . $post->search_keyword . "%' ORDER BY distance ASC ")->result_object();
+                        (SELECT count(*) FROM favourites f where f.sal_id = s.sal_id AND f.user_id = ? ) AS is_fav,
+                        (SELECT count(*) FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_reviews,
+                        (SELECT ifnull(AVG(rev_rating),5)  FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_ratings
+
+             FROM salons s WHERE s.sal_search_words LIKE '%" . $post->search_keyword . "%' ORDER BY distance ASC ", [$user->id])->result_object();
             $data = $salons;
 
             $i = 0;
-            foreach ($salons as $salon) {
-                $data[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
-                $i++;
-            }
+            // foreach ($salons as $salon) {
+            //     $data[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
+            //     $i++;
+            // }
             $data = $this->make_salons_b($data);
             echo json_encode(array(
                 "action" => "success",
@@ -858,22 +879,6 @@ class Api extends ADMIN_Controller
             ));
 
         } else {
-            // foreach ($sal_mens as $sal_men) {
-
-            //     $sal_mens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_men->sal_id])->result_object();
-            //     $i++;
-            // }
-            // $sal_mens_final = $sal_mens;
-            // $sal_womens = $this->db->query("SELECT s.*,count(fav_id) as is_fav FROM salons s LEFT JOIN favourites f ON (s.sal_id = f.sal_id and f.user_id = ?) WHERE sal_type = 'women' ", [$user->id])->result_object();
-            // $sal_womens_final = $sal_womens;
-            // $i = 0;
-
-            // foreach ($sal_womens as $sal_women) {
-            //     $sal_womens_final[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$sal_women->sal_id])->result_object();
-            //     $i++;
-            // }
-
-            // $salons = $this->db->query("SELECT s.*, count(f.fav_id) as is_fav FROM salons s LEFT JOIN favourites f  ON (s.sal_id = f.sal_id and f.user_id = ?)  ", [$user->id])->result_object();
 
             $salons = $this->db->query("SELECT s.*,
              round(IFNULL((
@@ -885,29 +890,38 @@ class Api extends ADMIN_Controller
 							  * sin( radians( $sal_lat ) )
 							)
 						  ),0),2) AS distance,
-            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s WHERE s.is_deleted = 0 AND s.is_active = 1 ORDER BY distance ASC ", [$user->id])->result_object();
-            $salon_f = $salons;
-            $sal_mens_final;
-            $sal_womens_final;
+            (SELECT count(*) FROM favourites f where f.sal_id = s.sal_id AND f.user_id = ? ) AS is_fav,
+            (SELECT count(*) FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_reviews,
+            (SELECT ifnull(AVG(rev_rating),5)  FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_ratings
+                FROM salons s  WHERE s.is_deleted = 0 AND s.is_active = 1 ORDER BY distance ASC ", [$user->id])->result_object();
+
+            // $salon_f = $salons;
+            $salon_f = $this->make_salons_b($salons);
+
+            $sal_mens_final = array();
+            $sal_womens_final = array();
             $i = 0;
-            foreach ($salons as $salon) {
+            $j = 0;
+            foreach ($salon_f as $salon) {
                 // $salon_f[$i]->sal_services = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$salon->sal_id])->result_object();
-                if ($salon->sal_type == 'Men') {
-                    $sal_mens_final[$i] = $salon_f[$i];
+                if ($salon['sal_type'] == 'Men') {
+                    $sal_mens_final[$i] = $salon;
+                    $i++;
                 } else {
-                    $sal_womens_final[$i] = $salon_f[$i];
+                    $sal_womens_final[$j] = $salon;
+                    $j++;
                 }
-                $i++;
+
             }
 
-            $sal_mens_final = $this->make_salons_b($sal_mens_final);
-            $sal_womens_final = $this->make_salons_b($sal_womens_final);
+            // $sal_mens_final = $this->make_salons_b($sal_mens_final);
+            // $sal_womens_final = $this->make_salons_b($sal_womens_final);
             $recommended = array();
 
             $final = array(
                 "mens" => $sal_mens_final,
                 "womens" => $sal_womens_final,
-                "salons" => $salons,
+                "salons" => $salon_f,
                 "recommended" => $recommended,
             );
 
@@ -937,15 +951,25 @@ class Api extends ADMIN_Controller
 
         $imgs = $this->db->where('sal_id', $post->sal_id)->get('sal_imgs')->result_object();
         $sal_services = $this->db->where('sal_id', $post->sal_id)->get('sal_services')->result_object();
+
+        $sal_reviews = $this->db->query("SELECT r.*, u.profile_pic,u.username, u.phone, u.email FROM reviews r INNER JOIN users u ON r.user_id = u.id WHERE r.sal_id = ? ", [$post->sal_id])->result_object();
+        $sal_ratings = $this->db->query("SELECT AVG(rev_rating) as average FROM `reviews` where sal_id = ? ", [$post->sal_id])->result_object();
+
         $i = 0;
         foreach ($imgs as $img) {
             $imgs[$i]->img = withurl($img->img);
             $i++;
         }
+        foreach ($sal_reviews as $review) {
+            $review->profile_pic = withUrl($review->profile_pic);
+        }
         echo json_encode(array(
             "action" => "success",
+            "sal_ratings" => number_format($sal_ratings[0]->average, 1),
             "imgs" => $imgs,
             "sal_services" => $sal_services,
+            "sal_reviews" => $sal_reviews,
+
         ));
 
     }
@@ -983,7 +1007,10 @@ class Api extends ADMIN_Controller
 							  * sin( radians( $sal_lat ) )
 							)
 						  ),0),2) AS distance,
-            (SELECT count(*) from favourites f where f.sal_id = s.sal_id and f.user_id = ? ) as is_fav FROM salons s ORDER BY distance ASC ", [$user->id])->result_object();
+                        (SELECT count(*) FROM favourites f where f.sal_id = s.sal_id AND f.user_id = ? ) AS is_fav,
+                        (SELECT count(*) FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_reviews,
+                        (SELECT ifnull(AVG(rev_rating),5)  FROM reviews r WHERE r.sal_id = s.sal_id) AS sal_ratings
+                    FROM salons s ORDER BY distance ASC ", [$user->id])->result_object();
         $salon_f = $salons;
         // $sal_mens_final;
         // $sal_womens_final;
@@ -1205,7 +1232,7 @@ class Api extends ADMIN_Controller
         }
 
         $sal_id = $post->sal_id;
-        $device_datetime_sql = $post->device_datetime;
+        $device_datetime_sql = $post->device_datetime_sql;
         $duration = $post->service_time;
         if ($post->appoint_id) {
             $appoint_id = $post->appoint_id;
@@ -1270,6 +1297,10 @@ class Api extends ADMIN_Controller
             "action" => "success",
             "data" => $arr_ss_slots,
             "qry" => $qry_ss_slots,
+            "time" => [
+               'php'=> strtotime($date),
+               "front" => $data
+            ]
         ));
         return;
 
@@ -1311,6 +1342,28 @@ class Api extends ADMIN_Controller
         }
         // $app_end_time = date("H:i", strtotime('+'.$post->app_est_duration. ' minutes', $post->app_start_time));
         $app_end_time = date('H:i', strtotime($post->app_start_time . ' +' . $post->app_est_duration . ' minutes'));
+        $app_status;
+
+        if ($post->app_status == "") {
+            echo json_encode(array("action" => "failed", "error" => "appointment status is mandatory"));
+            return;
+        }
+        if ($post->sal_id == "") {
+            echo json_encode(array("action" => "failed", "error" => "salon id is mandatory"));
+            return;
+        }
+
+        $sal_data = $this->db
+            ->where('sal_id', $post->sal_id)
+            ->get('salons')->result_object();
+
+        if (strtolower($post->app_status) == 'pending') {
+            if ($sal_data[0]->auto_app_accept == 1) {
+                $app_status = 'scheduled';
+            } else {
+                $app_status = 'pending';
+            }
+        }
 
         $data = array(
             "user_id" => $id,
@@ -1322,7 +1375,7 @@ class Api extends ADMIN_Controller
             "app_date" => $post->app_date,
             "app_end_time" => $app_end_time,
             "app_slots" => $app_slots,
-            "app_status" => $post->app_status,
+            "app_status" => $app_status,
             "sal_id" => $post->sal_id,
             "app_rating" => $post->app_rating,
             "app_review" => $post->app_review,
@@ -1348,14 +1401,6 @@ class Api extends ADMIN_Controller
 
         if ($data["app_slots"] == "") {
             echo json_encode(array("action" => "failed", "error" => "appointment slots are mandatory"));
-            return;
-        }
-        if ($data["app_status"] == "") {
-            echo json_encode(array("action" => "failed", "error" => "appointment status is mandatory"));
-            return;
-        }
-        if ($data["sal_id"] == "") {
-            echo json_encode(array("action" => "failed", "error" => "salon id is mandatory"));
             return;
         }
 
@@ -1399,7 +1444,8 @@ class Api extends ADMIN_Controller
 
     }
 
-    public function get_appoints()
+    public function get_appoints() // user
+
     {
         $post = json_decode(file_get_contents("php://input"));
         if (empty($post)) {
@@ -1494,64 +1540,61 @@ class Api extends ADMIN_Controller
 
     }
 
-    // public function update_app() // mainly for change the app_status, completed or completed and reviewed and for giving a review
+    public function complete_app() // mainly for change the app_status, completed or completed and reviewed and for giving a review
 
-    // {
-    //     $post = json_decode(file_get_contents("php://input"));
-    //     if (empty($post)) {
-    //         $post = (object) $_POST;
-    //     }
-    //     $user_logged = $this->do_auth_salon($post);
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        if ($post->user == true) {
+            $user_logged = $this->do_auth($post);
+        } else {
+            $user_logged = $this->do_auth_salon($post);
+        }
 
-    //     if ($post->app_id == '') {
-    //         echo json_encode(array(
-    //             "action" => "failed",
-    //             "error" => "appoint id is mandatory",
-    //         ));
-    //     }
+        if ($post->app_id == '') {
+            echo json_encode(array(
+                "action" => "failed",
+                "error" => "appoint id is mandatory",
+            ));
+        }
 
-    //     if ($post->app_status == 'completed') {
-    //         $this->db->query("UPDATE appointments SET app_status = 'completed' WHERE app_id = ? ", [$post->app_id]);
-    //     } else if ($post->app_status == 'completed & reviewed') {
-    //         $this->db->query("UPDATE appointments SET app_status = 'completed & reviewed', app_rating = ?, app_review = ?  WHERE app_id = ? ", [$post->app_id]);
-    //         if (isset(stelen($post->rev_rating))) {
-    //             if($post->user_id==''){
-    //                 echo json_encode(array(
-    //                     "action" => "failed",
-    //                     "error" => "user_id is mandatory",
-    //                 ));
-    //             }
-    //             if($post->sal_id==''){
-    //                 echo json_encode(array(
-    //                     "action" => "failed",
-    //                     "error" => "user_id is mandatory",
-    //                 ));
-    //             }
-    //             if($post->user_id==''){
-    //                 echo json_encode(array(
-    //                     "action" => "failed",
-    //                     "error" => "user_id is mandatory",
-    //                 ));
-    //             }
+        if ($post->app_status == 'completed') { // for the vendor to set the status as complete
+            $this->db->query("UPDATE appointments SET app_status = 'completed' WHERE app_id = ? ", [$post->app_id]);
+        } else if ($post->app_status == 'completed & reviewed') { // for the user to set the status as reviewed
+            $data1 = array(
+                "app_status" => "completed & reviewed",
+                "app_rating" => $post->app_rating,
+                "app_review" => $post->app_review,
+                "app_review_datetime" => date('Y-m-d'),
+            );
+            $this->db
+                ->where("app_id", $post->app_id)
+                ->update('appointments', $data1);
 
-    //         }
-    //         $review = array(
-    //             "user_id" => $post->user_id,
-    //             "sal_id" => $post->sal_id,
-    //             "app_id" => $post->app_id,
-    //             "rev_rating" => $post->rev_rating,
-    //             "rev_text" => $post->rev_text,
-    //         );
+            if (strlen($post->app_review)) {
+                $review = array(
+                    "user_id" => $user_logged->id,
+                    "sal_id" => $post->sal_id,
+                    "app_id" => $post->app_id,
+                    "rev_rating" => $post->app_rating,
+                    "rev_text" => $post->app_review,
+                );
+                $this->db->insert("reviews", $review);
+            }
+        }
 
-    //         $this->db->insert("reviews", $review);
+        echo json_encode(array(
+            "action" => "success",
+            "data" => "1",
+        ));
 
-    //     }
+        // if($post->us)
 
-    //     // if($post->us)
+        // select all slots where
 
-    //     // select all slots where
-
-    // }
+    }
 
     public function get_cancellation_policy()
     {
@@ -1723,23 +1766,7 @@ class Api extends ADMIN_Controller
             $post = (object) $_POST;
         }
         $user_logged = $this->do_auth_salon($post);
-        $data = array($user_logged);
-        $data = $this->make_salons_b($data);
-        // $i=0;
-        // foreach ($data as $data1) {
-        $data[0]["sal_services"] = $this->db->query("SELECT * FROM sal_services WHERE sal_id = ? ", [$data[0]["sal_id"]])->result_object();
-        // $sal_id = ;
-        // $i++;
-        // }
-
-        echo json_encode(array(
-            "action" => "success",
-            "sal_id" => $sal_id,
-            "data" => $data,
-
-        ));
-        // $salon = $this->db->query("SELECT * FROM salons  WHERE sal_id = ? ", [$user_logged->id])->result_object();
-
+        $this->print_salon_data($user_logged->sal_id);
     }
 
     public function get_sal_appoints()
@@ -1909,6 +1936,67 @@ class Api extends ADMIN_Controller
             "data" => $data,
         ));
         return;
+
+    }
+
+    public function change_auto_app_accept() // for user only
+
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $status;
+        if ($post->auto_app_accept == '1') {
+            $status = 1;
+        } else {
+            $status = 0;
+        }
+
+        $this->db->query("UPDATE salons SET auto_app_accept = ? WHERE sal_id = ? ", [$status, $user_logged->sal_id]);
+        
+        $this->print_salon_data($user_logged->sal_id);
+
+    }
+
+    public function mobile_pay_status() // for user only
+
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $status;
+        if ($post->mobile_pay_status == 1) {
+            $status = 1;
+        } else {
+            $status = 0;
+        }
+
+        $this->db->query("UPDATE salons SET mobile_pay = ? WHERE sal_id = ? ", [$status, $user_logged->sal_id]);
+        $this->print_salon_data($user_logged->sal_id);
+
+    }
+
+    public function allow_push_status() // for user only
+
+    {
+        $post = json_decode(file_get_contents("php://input"));
+        if (empty($post)) {
+            $post = (object) $_POST;
+        }
+        $user_logged = $this->do_auth_salon($post);
+        $status;
+        if ($post->allow_push_status == 1) {
+            $status = 1;
+        } else {
+            $status = 0;
+        }
+
+        $this->db->query("UPDATE salons SET allow_push = ? WHERE sal_id = ? ", [$status, $user_logged->sal_id]);
+        $this->print_salon_data($user_logged->sal_id);
 
     }
 
